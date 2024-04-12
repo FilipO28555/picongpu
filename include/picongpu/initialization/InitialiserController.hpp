@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -79,8 +79,7 @@ namespace picongpu
             Environment<>::get().PluginConnector().restartPlugins(restartStep, restartDirectory);
             eventSystem::getTransactionEvent().waitForFinished();
 
-            CUDA_CHECK(cuplaDeviceSynchronize());
-            CUDA_CHECK(cuplaGetLastError());
+            alpaka::wait(manager::Device<ComputeDevice>::get().current());
 
             GridController<simDim>& gc = Environment<simDim>::get().GridController();
 
@@ -143,11 +142,10 @@ namespace picongpu
                 log<picLog::PHYSICS>("Resolving plasma oscillations?\n"
                                      "   Estimates are based on DensityRatio to BASE_DENSITY of each species\n"
                                      "   (see: density.param, speciesDefinition.param).\n"
-                                     "   It and does not cover other forms of initialization");
+                                     "   It does not cover other forms of initialization");
                 logOmegaP();
 
-                const int localNrOfCells
-                    = cellDescription->getGridLayout().getDataSpaceWithoutGuarding().productOfComponents();
+                const int localNrOfCells = cellDescription->getGridLayout().sizeWithoutGuardND().productOfComponents();
                 log<picLog::PHYSICS>("macro particles per device: %1%")
                     % (localNrOfCells * particles::TYPICAL_PARTICLES_PER_CELL
                        * (pmacc::mp_size<VectorAllSpecies>::value));

@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -25,7 +25,7 @@
 #include "pmacc/dimensions/DataSpace.hpp"
 #include "pmacc/eventSystem/tasks/StreamTask.hpp"
 #include "pmacc/lockstep.hpp"
-#include "pmacc/lockstep/WorkerCfg.hpp"
+#include "pmacc/lockstep/BlockCfg.hpp"
 #include "pmacc/mappings/simulation/EnvironmentController.hpp"
 #include "pmacc/memory/boxes/DataBox.hpp"
 #include "pmacc/memory/buffers/DeviceBuffer.hpp"
@@ -37,7 +37,7 @@ namespace pmacc
 {
     /** set a value to all elements of a box
      *
-     * @tparam T_xChunkSize number of elements in x direction to prepare with one cupla block
+     * @tparam T_xChunkSize number of elements in x direction to prepare with one alpaka block
      */
     template<uint32_t T_xChunkSize>
     struct KernelSetValue
@@ -48,32 +48,27 @@ namespace pmacc
          * @tparam T_ValueType type of the value
          * @tparam T_SizeVecType pmacc::math::Vector, index type
          * @tparam T_Acc alpaka accelerator type
-         * @tparam T_WorkerCfg lockstep worker configuration type
+         * @tparam T_BlockCfg lockstep worker configuration type
          *
          * @param memBox box of which all elements shall be set to value
          * @param value value to set to all elements of memBox
          * @param size extents of memBox
          */
-        template<
-            typename T_DataBox,
-            typename T_ValueType,
-            typename T_SizeVecType,
-            typename T_Acc,
-            typename T_WorkerCfg>
+        template<typename T_DataBox, typename T_ValueType, typename T_SizeVecType, typename T_Acc, typename T_BlockCfg>
         DINLINE void operator()(
             T_Acc const& acc,
             T_DataBox memBox,
             T_ValueType const& value,
             T_SizeVecType const& size,
-            T_WorkerCfg const& workerCfg) const
+            T_BlockCfg const& blockCfg) const
         {
             using SizeVecType = T_SizeVecType;
 
-            SizeVecType const blockIndex(cupla::blockIdx(acc));
+            SizeVecType const blockIndex(device::getBlockIdx(acc));
             SizeVecType blockSize(SizeVecType::create(1));
             blockSize.x() = T_xChunkSize;
 
-            lockstep::makeForEach<T_xChunkSize>(workerCfg.getWorker(acc))(
+            lockstep::makeForEach<T_xChunkSize>(blockCfg.getWorker(acc))(
                 [&](uint32_t const linearIdx)
                 {
                     auto virtualWorkerIdx(SizeVecType::create(0));
@@ -99,7 +94,7 @@ namespace pmacc
      *
      * T_ValueType  = data type (e.g. float, float2)
      * T_dim   = dimension of the GridBuffer
-     * T_isLess128ByteAndTrivillyCopyable = true if T_ValueType can be send via kernel parameter (on cupla T_ValueType
+     * T_isLess128ByteAndTrivillyCopyable = true if T_ValueType can be send via kernel parameter (T_ValueType
      * must be <= 128 byte) and must be trivially copyable
      */
     template<
@@ -116,9 +111,11 @@ namespace pmacc
         using ValueType = T_ValueType;
         static constexpr uint32_t dim = T_dim;
 
-        TaskSetValueBase(DeviceBuffer<ValueType, dim>& dst, const ValueType& value) : StreamTask(), value(value)
+        TaskSetValueBase(DeviceBuffer<ValueType, dim>& dst, const ValueType& value)
+            : StreamTask()
+            , destination(&dst)
+            , value(value)
         {
-            this->destination = &dst;
         }
 
         ~TaskSetValueBase() override
@@ -166,13 +163,13 @@ namespace pmacc
         void init() override
         {
             // number of elements in destination
-            size_t const current_size = this->destination->getCurrentSize();
+            size_t const current_size = this->destination->size();
             // n-dimensional size of destination based on `current_size`
-            DataSpace<dim> const area_size(this->destination->getCurrentDataSpace(current_size));
+            MemSpace<dim> const areaSizeND(this->destination->sizeND(current_size));
 
-            if(area_size.productOfComponents() != 0)
+            if(areaSizeND.productOfComponents() != 0)
             {
-                auto gridSize = area_size;
+                auto gridSize = areaSizeND;
 
                 /* number of elements in x direction used to chunk the destination buffer
                  * for block parallel processing
@@ -182,13 +179,25 @@ namespace pmacc
                 // number of blocks in x direction
                 gridSize.x() = ceil(static_cast<double>(gridSize.x()) / static_cast<double>(xChunkSize));
 
-                auto workerCfg = lockstep::makeWorkerCfg<xChunkSize>();
+                auto blockCfg = lockstep::makeBlockCfg<xChunkSize>();
                 auto destBox = this->destination->getDataBox();
-                CUPLA_KERNEL(KernelSetValue<xChunkSize>)
-                (gridSize.toDim3(),
-                 workerCfg.getNumWorkers(),
-                 0,
-                 this->getCudaStream())(destBox, this->value, area_size, workerCfg);
+                auto blockSize = DataSpace<dim>::create(1);
+                blockSize.x() = blockCfg.numWorkers();
+
+                auto one = DataSpace<dim>::create(1);
+                auto workDiv = alpaka::WorkDivMembers<AlpakaDim<dim>, IdxType>{
+                    gridSize.toAlpakaKernelVec(),
+                    blockSize.toAlpakaKernelVec(),
+                    one.toAlpakaKernelVec()};
+                auto kernel = alpaka::createTaskKernel<Acc<dim>>(
+                    workDiv,
+                    KernelSetValue<xChunkSize>{},
+                    destBox,
+                    this->value,
+                    areaSizeND,
+                    blockCfg);
+                auto queue = this->getCudaStream();
+                alpaka::enqueue(queue, kernel);
             }
             this->activate();
         }
@@ -206,28 +215,28 @@ namespace pmacc
         using ValueType = T_ValueType;
         static constexpr uint32_t dim = T_dim;
 
+        using ValueBufferType = ::alpaka::Buf<HostDevice, T_ValueType, AlpakaDim<DIM1>, MemIdxType>;
+
         TaskSetValue(DeviceBuffer<ValueType, dim>& dst, const ValueType& value)
             : TaskSetValueBase<ValueType, dim>(dst, value)
-            , valuePointer_host(nullptr)
+            , valueBuffer(std::make_shared<ValueBufferType>(alpaka::allocMappedBufIfSupported<ValueType, MemIdxType>(
+                  manager::Device<HostDevice>::get().current(),
+                  manager::Device<ComputeDevice>::get().getPlatform(),
+                  MemSpace<DIM1>(1).toAlpakaMemVec())))
         {
         }
 
         ~TaskSetValue() override
         {
-            if(valuePointer_host != nullptr)
-            {
-                CUDA_CHECK_NO_EXCEPT(cuplaFreeHost(valuePointer_host));
-                valuePointer_host = nullptr;
-            }
         }
 
         void init() override
         {
-            size_t current_size = this->destination->getCurrentSize();
-            const DataSpace<dim> area_size(this->destination->getCurrentDataSpace(current_size));
-            if(area_size.productOfComponents() != 0)
+            size_t size = this->destination->size();
+            const MemSpace<dim> areaSizeND(this->destination->sizeND(size));
+            if(areaSizeND.productOfComponents() != 0)
             {
-                auto gridSize = area_size;
+                auto gridSize = areaSizeND;
 
                 /* number of elements in x direction used to chunk the destination buffer
                  * for block parallel processing
@@ -237,32 +246,37 @@ namespace pmacc
                 // number of blocks in x direction
                 gridSize.x() = ceil(static_cast<double>(gridSize.x()) / static_cast<double>(xChunkSize));
 
-                ValueType* devicePtr = this->destination->getPointer();
+                auto firstElemBuffer = this->destination->as1DBufferNElem(1);
+                alpaka::getPtrNative(*valueBuffer)[0] = this->value; // copy value to new place
 
-                CUDA_CHECK(cuplaMallocHost((void**) &valuePointer_host, sizeof(ValueType)));
-                *valuePointer_host = this->value; // copy value to new place
+                auto queue = this->getCudaStream();
+                alpaka::memcpy(queue, firstElemBuffer, *valueBuffer, MemSpace<DIM1>(1).toAlpakaMemVec());
 
-                CUDA_CHECK(cuplaMemcpyAsync(
-                    devicePtr,
-                    valuePointer_host,
-                    sizeof(ValueType),
-                    cuplaMemcpyHostToDevice,
-                    this->getCudaStream()));
-
-                auto workerCfg = lockstep::makeWorkerCfg<xChunkSize>();
+                auto blockCfg = lockstep::makeBlockCfg<xChunkSize>();
                 auto destBox = this->destination->getDataBox();
-                CUPLA_KERNEL(KernelSetValue<xChunkSize>)
-                (gridSize.toDim3(),
-                 workerCfg.getNumWorkers(),
-                 0,
-                 this->getCudaStream())(destBox, devicePtr, area_size, workerCfg);
+                auto blockSize = DataSpace<dim>::create(1);
+                blockSize.x() = blockCfg.numWorkers();
+
+                auto one = DataSpace<dim>::create(1);
+                auto workDiv = alpaka::WorkDivMembers<AlpakaDim<dim>, IdxType>{
+                    gridSize.toAlpakaKernelVec(),
+                    blockSize.toAlpakaKernelVec(),
+                    one.toAlpakaKernelVec()};
+                auto kernel = alpaka::createTaskKernel<Acc<dim>>(
+                    workDiv,
+                    KernelSetValue<xChunkSize>{},
+                    destBox,
+                    alpaka::getPtrNative(firstElemBuffer),
+                    areaSizeND,
+                    blockCfg);
+                alpaka::enqueue(queue, kernel);
             }
 
             this->activate();
         }
 
     private:
-        ValueType* valuePointer_host;
+        std::shared_ptr<ValueBufferType> valueBuffer;
     };
 
 } // namespace pmacc

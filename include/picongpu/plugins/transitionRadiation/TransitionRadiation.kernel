@@ -11,7 +11,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -28,7 +28,6 @@
 #include "picongpu/plugins/transitionRadiation/GammaMask.hpp"
 #include "picongpu/plugins/transitionRadiation/Particle.hpp"
 
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/kernel/atomic.hpp>
 
 #include <cstdlib>
@@ -118,9 +117,7 @@ namespace picongpu
                     // radiation calculation
                     PMACC_SMEM(worker, counter_s, int);
 
-
-                    int const theta_idx
-                        = cupla::blockIdx(worker.getAcc()).x; // cupla::blockIdx(acc).x is used to determine theta
+                    int const theta_idx = worker.blockDomIdxND().x();
 
                     // looking direction (needed for observer) used in the thread
                     float3_X const look = transitionRadiation::observationDirection(theta_idx);
@@ -147,7 +144,7 @@ namespace picongpu
                     {
                         // select SuperCell and add one sided guard again
                         DataSpace<simDim> const superCell
-                            = DataSpaceOperations<simDim>::map(superCellsCount, superCellIndex) + guardingSuperCells;
+                            = pmacc::math::mapToND(superCellsCount, superCellIndex) + guardingSuperCells;
 
 
                         // -guardingSuperCells remove guarding block
@@ -225,16 +222,14 @@ namespace picongpu
                                             if(saveParticleAt != -1)
                                             {
                                                 // calculate global position
-                                                lcellId_t const cellIdx = par[localCellIdx_];
+                                                int const cellIdx = par[localCellIdx_];
 
                                                 // position inside of the cell
                                                 floatD_X const pos = par[position_];
 
                                                 // calculate global position of cell
-                                                DataSpace<simDim> const globalPos(
-                                                    superCellOffset
-                                                    + DataSpaceOperations<simDim>::template map<SuperCellSize>(
-                                                        cellIdx));
+                                                DataSpace<simDim> const globalPos = superCellOffset
+                                                    + pmacc::math::mapToND(SuperCellSize::toRT(), cellIdx);
 
                                                 // add global position of cell with local position of particle in cell
                                                 float3_X particleLocation;
@@ -286,8 +281,8 @@ namespace picongpu
                             worker.sync();
 
                             // run over all  valid omegas for this thread
-                            for(uint32_t o = worker.getWorkerIdx(); o < transitionRadiation::frequencies::nOmega;
-                                o += T_Worker::getNumWorkers())
+                            for(uint32_t o = worker.workerIdx(); o < transitionRadiation::frequencies::nOmega;
+                                o += T_Worker::numWorkers())
                             {
                                 float_X itrSum = 0.0;
                                 float_X totalParticles = 0.0;
@@ -297,7 +292,7 @@ namespace picongpu
                                 // create a form factor object for physical correct coherence effects within
                                 // macro-particles
                                 float_X const omega = freqFkt(o);
-                                macroParticleFormFactor::radFormFactor const macroParticleFormFactor{
+                                macroParticleFormFactor::RadFormFactor const macroParticleFormFactor{
                                     omega,
                                     precisionCast<float_64>(look)};
 

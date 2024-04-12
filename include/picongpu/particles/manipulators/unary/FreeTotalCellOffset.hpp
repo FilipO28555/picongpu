@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -65,8 +65,9 @@ namespace picongpu
                         template<typename T_Particle, typename T_Worker>
                         HDINLINE void operator()(T_Worker const&, T_Particle& particle)
                         {
-                            DataSpace<simDim> const cellInSuperCell(
-                                DataSpaceOperations<simDim>::template map<SuperCellSize>(particle[localCellIdx_]));
+                            DataSpace<simDim> const cellInSuperCell = pmacc::math::mapToND(
+                                SuperCellSize::toRT(),
+                                static_cast<int>(particle[localCellIdx_]));
                             Functor::operator()(m_superCellToLocalOriginCellOffset + cellInSuperCell, particle);
                         }
 
@@ -106,7 +107,7 @@ namespace picongpu
                      * @param worker lockstep worker
                      * @param localSupercellOffset offset (in superCells, without any guards) relative
                      *                             to the origin of the local domain
-                     * @param workerCfg configuration of the worker
+                     * @param blockCfg configuration of the worker
                      */
                     template<typename T_Worker>
                     HDINLINE auto operator()(T_Worker const& worker, DataSpace<simDim> const& localSupercellOffset)

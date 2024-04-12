@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -75,7 +75,7 @@ namespace picongpu
                     {
                         RngHandle tmp(rngHandle);
                         auto rngOffset = DataSpace<simDim>::create(0);
-                        rngOffset.x() = worker.getWorkerIdx();
+                        rngOffset.x() = worker.workerIdx();
                         auto numRNGsPerSuperCell = DataSpace<simDim>::create(1);
                         numRNGsPerSuperCell.x() = numFrameSlots;
                         tmp.init(localSupercellOffset * numRNGsPerSuperCell + rngOffset);

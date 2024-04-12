@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -35,26 +35,12 @@ namespace picongpu
         Size2D maxSize;
         Size2D size;
         Size2D offset;
-        Size2D localOffset; // not valid data
-        Size2D offsetToWindow;
-
-        Size2D getLocalOffsetToWindow()
-        {
-            Size2D tmp(offsetToWindow);
-            if(tmp.x() < 0)
-                tmp.x() = 0;
-            if(tmp.y() < 0)
-                tmp.y() = 0;
-            return tmp;
-        }
 
         void writeToConsole(std::ostream& ocons) const
         {
             ocons << "NodeHeader.maxSize " << maxSize.x() << " " << maxSize.y() << std::endl;
             ocons << "NodeHeader.size " << size.x() << " " << size.y() << std::endl;
-            ocons << "NodeHeader.localOffset " << localOffset.x() << " " << localOffset.y() << std::endl;
             ocons << "NodeHeader.offset " << offset.x() << " " << offset.y() << std::endl;
-            ocons << "NodeHeader.offsetToWindow " << offsetToWindow.x() << " " << offsetToWindow.y() << std::endl;
         }
     };
 

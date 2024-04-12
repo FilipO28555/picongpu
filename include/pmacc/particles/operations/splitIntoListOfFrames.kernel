@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include "pmacc/debug/VerboseLog.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/kernel/atomic.hpp"
 #include "pmacc/lockstep.hpp"
 #include "pmacc/math/Vector.hpp"
@@ -113,7 +112,7 @@ namespace pmacc
                                 /* apply for work for the full block, counter[0] contains the
                                  * offset in srcFrame to load N particles
                                  */
-                                sharedSrcParticleOffset = cupla::atomicAdd(
+                                sharedSrcParticleOffset = alpaka::atomicAdd(
                                     worker.getAcc(),
                                     &(counter[0]),
                                     particlesPerFrame,
@@ -162,12 +161,11 @@ namespace pmacc
                                     DataSpace<numDims> const particleCellOffset
                                         = srcFrame[srcParticleIdx][domainCellIdxIdentifier] - cellOffsetToTotalDomain;
                                     particlesSuperCellIdx = particleCellOffset / SuperCellSize::toRT();
-                                    linearParticlesSuperCell
-                                        = DataSpaceOperations<numDims>::map(numSuperCells, particlesSuperCellIdx);
+                                    linearParticlesSuperCell = math::linearize(numSuperCells, particlesSuperCellIdx);
                                     sharedLinearSuperCellIds[idx] = linearParticlesSuperCell;
                                     DataSpace<numDims> const localCellIdx(
                                         particleCellOffset - particlesSuperCellIdx * SuperCellSize::toRT());
-                                    lCellIdx = DataSpaceOperations<numDims>::template map<SuperCellSize>(localCellIdx);
+                                    lCellIdx = math::linearize(SuperCellSize::toRT(), localCellIdx);
                                 }
                                 return particlesSuperCellIdx;
                             },
@@ -311,17 +309,16 @@ namespace pmacc
                         % (i * chunkSize) % currentChunkSize % leftOverParticles;
 
                     constexpr uint32_t frameSize = T_SrcFrame::frameSize;
-                    auto workerCfg = lockstep::makeWorkerCfg<frameSize>();
 
-                    PMACC_LOCKSTEP_KERNEL(detail::KernelSplitIntoListOfFrames{}, workerCfg)
-                    (math::float2int_ru(double(currentChunkSize) / double(frameSize)))(
-                        counterBuffer.getDeviceBuffer().getDataBox(),
-                        destSpecies.getDeviceParticlesBox(),
-                        srcFrame,
-                        static_cast<int>(numParticles),
-                        cellOffsetToTotalDomain,
-                        domainCellIdxIdentifier,
-                        cellDesc);
+                    PMACC_LOCKSTEP_KERNEL(detail::KernelSplitIntoListOfFrames{})
+                        .template config<frameSize>(math::float2int_ru(double(currentChunkSize) / double(frameSize)))(
+                            counterBuffer.getDeviceBuffer().getDataBox(),
+                            destSpecies.getDeviceParticlesBox(),
+                            srcFrame,
+                            static_cast<int>(numParticles),
+                            cellOffsetToTotalDomain,
+                            domainCellIdxIdentifier,
+                            cellDesc);
                     destSpecies.fillAllGaps();
                     leftOverParticles -= currentChunkSize;
                 }

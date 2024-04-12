@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -90,7 +90,7 @@ namespace picongpu
             const uint32_t r_element = axis_element.space;
 
             /* CORE + BORDER elements for spatial bins */
-            this->r_bins = this->m_cellDescription->getGridLayout().getDataSpaceWithoutGuarding()[r_element];
+            this->r_bins = this->m_cellDescription->getGridLayout().sizeWithoutGuardND()[r_element];
 
             auto const num_pbinsToAvoidOdrUse = this->num_pbins;
             this->dBuffer
@@ -210,9 +210,9 @@ namespace picongpu
 
         /* transfer to host */
         this->dBuffer->deviceToHost();
-        auto bufferExtent = this->dBuffer->getDeviceBuffer().getDataSpace();
+        auto bufferExtent = this->dBuffer->getDeviceBuffer().capacityND();
 
-        auto hReducedBuffer = HostBuffer<float_PS, 2>(this->dBuffer->getDeviceBuffer().getDataSpace());
+        auto hReducedBuffer = HostBuffer<float_PS, 2>(this->dBuffer->getDeviceBuffer().capacityND());
 
         eventSystem::getTransactionEvent().waitForFinished();
 
@@ -224,8 +224,8 @@ namespace picongpu
          */
         (*planeReduce)(
             pmacc::math::operation::Add(),
-            hReducedBuffer.getBasePointer(),
-            this->dBuffer->getHostBuffer().getBasePointer(),
+            hReducedBuffer.data(),
+            this->dBuffer->getHostBuffer().data(),
             bufferExtent.productOfComponents(),
             mpi::reduceMethods::Reduce());
 

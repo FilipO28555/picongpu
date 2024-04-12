@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -73,7 +73,7 @@ namespace picongpu
                  *           type: vector_64
                  *
                  */
-                HDINLINE vector_64 observation_direction(const int observation_id_extern)
+                HDINLINE vector_64 observationDirection(const int observation_id_extern)
                 {
                     /* float type used in radiation direction calculations */
                     using float_obs = picongpu::float_X;

@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -61,8 +61,7 @@ namespace picongpu
             T_Filter filter) const
         {
             /* multi-dimensional offset vector from local domain origin on GPU in units of super cells */
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             auto forEachParticle = pmacc::particles::algorithm::acc::makeForEach(worker, particlesBox, superCellIdx);
 
@@ -83,7 +82,7 @@ namespace picongpu
                     {
                         // Check if it fits the internal cells range
                         auto const cellInSuperCell
-                            = DataSpaceOperations<simDim>::template map<SuperCellSize>(particle[localCellIdx_]);
+                            = pmacc::math::mapToND(SuperCellSize::toRT(), static_cast<int>(particle[localCellIdx_]));
                         auto const localCell = superCellCellOffsetNoGuard + cellInSuperCell;
                         for(uint32_t d = 0; d < simDim; d++)
                             if((localCell[d] < beginCellIdxLocal[d]) || (localCell[d] >= endCellIdxLocal[d]))

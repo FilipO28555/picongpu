@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -68,7 +68,7 @@ namespace picongpu
                          *   z = [0, numParsPerCell_Z-1]
                          */
                         DataSpace<simDim> inCellCoordinate
-                            = DataSpaceOperations<simDim>::map(m_numParDirection, m_currentMacroParticles);
+                            = pmacc::math::mapToND(m_numParDirection, static_cast<int>(m_currentMacroParticles));
 
                         particle[position_]
                             = precisionCast<float_X>(inCellCoordinate) * spacing + spacing * float_X(0.5);

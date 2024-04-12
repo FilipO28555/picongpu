@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -30,7 +30,7 @@ namespace pmacc
         template<typename Permutation>
         struct PermutedNavigator
         {
-            HDINLINE int operator()(int component) const
+            HDINLINE constexpr int operator()(int component) const
             {
                 return Permutation().toRT()[component];
             }

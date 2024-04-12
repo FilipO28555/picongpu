@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -71,7 +71,7 @@ namespace picongpu
          *
          * @tparam T_ParBox pmacc::ParticlesBox, particle box type
          * @tparam T_BinBox pmacc::DataBox, box type for the histogram in global memory
-         * @tparam T_Mapping type of the mapper to map a cupla block to a supercell index
+         * @tparam T_Mapping type of the mapper to map an alpaka block to a supercell index
          * @tparam T_Worker lockstep worker type
          *
          * @param acc alpaka accelerator
@@ -80,7 +80,7 @@ namespace picongpu
          * @param numBins number of bins in the histogram (must be fit into the shared memory)
          * @param minEnergy particle energy for the first bin
          * @param maxEnergy particle energy for the last bin
-         * @param mapper functor to map a cupla block to a supercells index
+         * @param mapper functor to map an alpaka block to a supercells index
          */
         template<typename T_ParBox, typename T_BinBox, typename T_Mapping, typename T_Filter, typename T_Worker>
         DINLINE void operator()(
@@ -93,7 +93,7 @@ namespace picongpu
             T_Mapping const mapper,
             T_Filter filter) const
         {
-            constexpr uint32_t numWorkers = T_Worker::getNumWorkers();
+            constexpr uint32_t numWorkers = T_Worker::numWorkers();
 
             /* shBins index can go from 0 to (numBins+2)-1
              * 0 is for <minEnergy
@@ -104,8 +104,7 @@ namespace picongpu
 
             int const realNumBins = numBins + 2;
 
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             auto forEachParticle = pmacc::particles::algorithm::acc::makeForEach(worker, pb, superCellIdx);
 
@@ -167,7 +166,7 @@ namespace picongpu
                          */
                         float_X const normedWeighting
                             = weighting / float_X(particles::TYPICAL_NUM_PARTICLES_PER_MACROPARTICLE);
-                        cupla::atomicAdd(
+                        alpaka::atomicAdd(
                             lockstepWorker.getAcc(),
                             &(shBin[binNumber]),
                             normedWeighting,
@@ -181,7 +180,7 @@ namespace picongpu
                 [&](uint32_t const linearIdx)
                 {
                     for(int i = linearIdx; i < realNumBins; i += numWorkers)
-                        cupla::atomicAdd(
+                        alpaka::atomicAdd(
                             worker.getAcc(),
                             &(gBins[i]),
                             float_64(shBin[i]),
@@ -432,11 +431,8 @@ namespace picongpu
 
             auto const mapper = makeAreaMapper<AREA>(*m_cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
-
-            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelBinEnergyParticles{}, workerCfg)(
-                mapper.getGridDim(),
-                realNumBins * sizeof(float_X));
+            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelBinEnergyParticles{})
+                              .configSMem(mapper.getGridDim(), *particles, realNumBins * sizeof(float_X));
 
             auto bindKernel = std::bind(
                 kernel,
@@ -458,7 +454,7 @@ namespace picongpu
             reduce(
                 pmacc::math::operation::Add(),
                 binReduced.data(),
-                gBins->getHostBuffer().getBasePointer(),
+                gBins->getHostBuffer().data(),
                 realNumBins,
                 mpi::reduceMethods::Reduce());
 

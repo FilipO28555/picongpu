@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -30,10 +30,10 @@ namespace pmacc
      * Helper class for AreaMapping.
      * Provides methods called by AreaMapping using template specialization.
      *
-     * @tparam areaType the area to map to
+     * @tparam T_area the area to map to
      * @tparam DIM dimension of the mapping
      */
-    template<uint32_t areaType, unsigned DIM>
+    template<uint32_t T_area, unsigned DIM>
     class AreaMappingMethods;
 
     // CORE + BORDER + GUARD

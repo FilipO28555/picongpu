@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -79,7 +79,7 @@ namespace pmacc
                     {
                         this->stream = static_cast<StreamTask*>(task)->getEventStream();
                         this->setTaskType(ITask::TASK_DEVICE);
-                        this->cuplaEvent = static_cast<StreamTask*>(task)->getCudaEventHandle();
+                        this->m_alpakaEvent = static_cast<StreamTask*>(task)->getCudaEventHandle();
                         this->hasCudaEventHandle = true;
                     }
                 }
@@ -96,7 +96,7 @@ namespace pmacc
                     {
                         this->stream = static_cast<StreamTask*>(task)->getEventStream();
                         this->setTaskType(ITask::TASK_DEVICE);
-                        this->cuplaEvent = static_cast<StreamTask*>(task)->getCudaEventHandle();
+                        this->m_alpakaEvent = static_cast<StreamTask*>(task)->getCudaEventHandle();
                         this->hasCudaEventHandle = true;
                     }
                 }

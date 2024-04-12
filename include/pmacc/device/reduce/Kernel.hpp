@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -41,10 +41,8 @@ namespace pmacc
             /** kernel to reduce elements within a buffer
              *
              * @tparam type element type within the buffer
-             * @tparam T_blockSize minimum number of elements which will be reduced
-             *                     within a CUDA block
              */
-            template<typename Type, uint32_t T_blockSize>
+            template<typename Type>
             struct Kernel
             {
                 /** reduce buffer
@@ -87,7 +85,8 @@ namespace pmacc
                     T_Functor func,
                     T_DestFunctor destFunc) const
                 {
-                    uint32_t const numGlobalVirtualThreadCount = cupla::gridDim(worker.getAcc()).x * T_blockSize;
+                    uint32_t const numGlobalVirtualThreadCount
+                        = worker.gridDomSizeND().x() * worker.blockDomSizeND().x();
 
                     Type* s_mem = ::alpaka::getDynSharedMem<Type>(worker.getAcc());
 
@@ -98,17 +97,17 @@ namespace pmacc
                         bufferSize,
                         func,
                         s_mem,
-                        cupla::blockIdx(worker.getAcc()).x);
+                        worker.blockDomIdxND().x());
 
                     lockstep::makeMaster(worker)(
-                        [&]() { destFunc(worker, destBuffer[cupla::blockIdx(worker.getAcc()).x], s_mem[0]); });
+                        [&]() { destFunc(worker, destBuffer[worker.blockDomIdxND().x()], s_mem[0]); });
                 }
 
                 /** reduce a buffer
                  *
                  * This method can be used to reduce a chunk of an array.
                  * This method is a **collective** method and needs to be called by all
-                 * threads within a cupla block.
+                 * threads within a alpaka block.
                  *
                  * @tparam T_SrcBuffer type of the buffer
                  * @tparam T_Functor type of the binary functor to reduce two elements
@@ -117,15 +116,16 @@ namespace pmacc
                  *
                  * @param worker lockstep worker
                  * @param numReduceThreads Number of threads which working together to reduce the array.
-                 *                         For a reduction within a block the value must be equal to T_blockSize
+                 *                         For a reduction within a block the value must be equal to
+                 *                         T_Worker::blockDomSize()
                  * @param srcBuffer a class or a pointer with the `operator[](size_t)` (one dimensional access)
                  * @param bufferSize number of elements in @p srcBuffer
                  * @param func binary functor for reduce which takes two arguments,
                  *        first argument is the source and get the new reduced value.
-                 * @param sharedMem shared memory buffer with storage for `linearThreadIdxInBlock` elements,
+                 * @param sharedMem shared memory buffer with storage for T_Worker::blockDomSize() elements,
                  *        buffer must implement `operator[](size_t)` (one dimensional access)
-                 * @param blockIndex index of the cupla block,
-                 *                   for a global reduce: `cupla::blockIdx(worker.getAcc()).x`,
+                 * @param blockIndex index of the alpaka block,
+                 *                   for a global reduce: `worker.blockDomIdxND().x()`,
                  *                   for a reduce within a block: `0`
                  *
                  * @result void the result is stored in the first slot of @p sharedMem
@@ -140,10 +140,11 @@ namespace pmacc
                     T_SharedBuffer& sharedMem,
                     size_t const blockIndex = 0u) const
                 {
-                    auto forEachBlockElem = lockstep::makeForEach<T_blockSize>(worker);
+                    auto forEachBlockElem = lockstep::makeForEach(worker);
 
                     auto linearReduceThreadIdxCtx = forEachBlockElem(
-                        [&](uint32_t const linearIdx) -> uint32_t { return blockIndex * T_blockSize + linearIdx; });
+                        [&](uint32_t const linearIdx) -> uint32_t
+                        { return blockIndex * T_Worker::blockDomSize() + linearIdx; });
 
                     auto isActiveCtx = forEachBlockElem(
                         [&](auto linearReduceThreadIdx) -> bool { return linearReduceThreadIdx < bufferSize; },
@@ -171,7 +172,7 @@ namespace pmacc
 
                     worker.sync();
                     /*now reduce shared memory*/
-                    uint32_t chunk_count = T_blockSize;
+                    uint32_t chunk_count = T_Worker::blockDomSize();
 
                     while(chunk_count != 1u)
                     {

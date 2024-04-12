@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -26,7 +26,6 @@
 #include "picongpu/fields/FieldJ.hpp"
 #include "picongpu/fields/incidentField/Traits.hpp"
 #include "picongpu/plugins/ILightweightPlugin.hpp"
-#include "picongpu/plugins/output/GatherSlice.hpp"
 #include "picongpu/plugins/output/header/MessageHeader.hpp"
 #include "picongpu/simulation/control/MovingWindow.hpp"
 
@@ -35,7 +34,6 @@
 #include <pmacc/assert.hpp>
 #include <pmacc/dataManagement/DataConnector.hpp>
 #include <pmacc/dimensions/DataSpace.hpp>
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/kernel/atomic.hpp>
 #include <pmacc/lockstep.hpp>
 #include <pmacc/lockstep/lockstep.hpp>
@@ -50,12 +48,14 @@
 #include <pmacc/memory/buffers/GridBuffer.hpp>
 #include <pmacc/memory/shared/Allocate.hpp>
 #include <pmacc/meta/ForEach.hpp>
+#include <pmacc/mpi/GatherSlice.hpp>
 #include <pmacc/particles/algorithm/ForEach.hpp>
 #include <pmacc/particles/memory/boxes/ParticlesBox.hpp>
 
 #include <cfloat>
 #include <memory>
 #include <string>
+#include <vector>
 
 
 namespace picongpu
@@ -282,8 +282,7 @@ namespace picongpu
 
             constexpr uint32_t cellsPerSupercell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
-            DataSpace<simDim> const suplercellIdx
-                = mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc())));
+            DataSpace<simDim> const suplercellIdx = mapper.getSuperCellIndex(worker.blockDomIdxND());
             // offset of the supercell (in cells) to the origin of the local domain
             DataSpace<simDim> const supercellCellOffset(
                 (suplercellIdx - mapper.getGuardingSuperCells()) * SuperCellSize::toRT());
@@ -292,11 +291,10 @@ namespace picongpu
             auto forEachCell = lockstep::makeForEach<cellsPerSupercell>(worker);
 
             forEachCell(
-                [&](uint32_t const linearIdx)
+                [&](int32_t const linearIdx)
                 {
                     // cell index within the superCell
-                    DataSpace<simDim> const cellIdx
-                        = DataSpaceOperations<simDim>::template map<SuperCellSize>(linearIdx);
+                    DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
                     // offset to the origin of the local domain + guarding cells
                     DataSpace<simDim> const cellOffset(suplercellIdx * SuperCellSize::toRT() + cellIdx);
                     // cell offset without guarding cells
@@ -397,8 +395,7 @@ namespace picongpu
              */
             auto isImageThreadCtx = lockstep::makeVar<bool>(forEachCell, false);
 
-            DataSpace<simDim> const suplercellIdx
-                = mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc())));
+            DataSpace<simDim> const suplercellIdx = mapper.getSuperCellIndex(worker.blockDomIdxND());
             // offset of the supercell (in cells) to the origin of the local domain
             DataSpace<simDim> const supercellCellOffset(
                 (suplercellIdx - mapper.getGuardingSuperCells()) * SuperCellSize::toRT());
@@ -408,10 +405,10 @@ namespace picongpu
             worker.sync();
 
             forEachCell(
-                [&](uint32_t const idx, bool& isImageThread)
+                [&](int32_t const idx, bool& isImageThread)
                 {
                     // cell index within the superCell
-                    DataSpace<simDim> const cellIdx = DataSpaceOperations<simDim>::template map<SuperCellSize>(idx);
+                    DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), idx);
 
                     // cell offset to origin of the local domain
                     DataSpace<simDim> const realCell(supercellCellOffset + cellIdx);
@@ -440,15 +437,14 @@ namespace picongpu
             // shared memory box for particle counter
             SharedMem counter(PitchedBox<float_X, DIM2>(
                 (float_X*) shBlock,
-                DataSpace<DIM2>(),
                 // pitch in byte
-                SuperCellSize::toRT()[transpose.x()] * sizeof(float_X)));
+                DataSpace<DIM2>{sizeof(float_X), SuperCellSize::toRT()[transpose.x()] * sizeof(float_X)}));
 
             forEachCell(
-                [&](uint32_t const idx, bool const isImageThread)
+                [&](int32_t const idx, bool const isImageThread)
                 {
                     /* cell index within the superCell */
-                    DataSpace<simDim> const cellIdx = DataSpaceOperations<simDim>::template map<SuperCellSize>(idx);
+                    DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), idx);
 
                     DataSpace<DIM2> const localCell(cellIdx[transpose.x()], cellIdx[transpose.y()]);
 
@@ -471,8 +467,8 @@ namespace picongpu
                 {
                     int const linearCellIdx = particle[localCellIdx_];
                     // we only draw the first slice of cells in the super cell (z == 0)
-                    DataSpace<simDim> const particleCellOffset(
-                        DataSpaceOperations<simDim>::template map<SuperCellSize>(linearCellIdx));
+                    DataSpace<simDim> const particleCellOffset
+                        = pmacc::math::mapToND(SuperCellSize::toRT(), linearCellIdx);
                     bool const isParticleOnSlice = IsPartOfSlice<>{}(
                         particleCellOffset + supercellCellOffset,
                         sliceDim,
@@ -483,7 +479,7 @@ namespace picongpu
                         DataSpace<DIM2> const reducedCell(
                             particleCellOffset[transpose.x()],
                             particleCellOffset[transpose.y()]);
-                        cupla::atomicAdd(
+                        alpaka::atomicAdd(
                             lockstepWorker.getAcc(),
                             &(counter(reducedCell)),
                             // normalize the value to avoid bad precision for large macro particle weightings
@@ -497,13 +493,12 @@ namespace picongpu
             worker.sync();
 
             forEachCell(
-                [&](uint32_t const idx, bool const isImageThread)
+                [&](int32_t const idx, bool const isImageThread)
                 {
                     if(isImageThread)
                     {
                         // cell index within the superCell
-                        DataSpace<simDim> const cellIdx
-                            = DataSpaceOperations<simDim>::template map<SuperCellSize>(idx);
+                        DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), idx);
                         // cell offset to origin of the local domain
                         DataSpace<simDim> const realCell(supercellCellOffset + cellIdx);
                         // index in image
@@ -570,7 +565,7 @@ namespace picongpu
                 forEachCell(
                     [&](uint32_t const linearIdx)
                     {
-                        uint32_t tid = cupla::blockIdx(worker.getAcc()).x * T_blockSize + linearIdx;
+                        uint32_t tid = worker.blockDomIdxND().x() * T_blockSize + linearIdx;
                         if(tid >= n)
                             return;
 
@@ -607,7 +602,7 @@ namespace picongpu
                 forEachCell(
                     [&](uint32_t const linearIdx)
                     {
-                        uint32_t const tid = cupla::blockIdx(worker.getAcc()).x * T_blockSize + linearIdx;
+                        uint32_t const tid = worker.blockDomIdxND().x() * T_blockSize + linearIdx;
                         if(tid >= n)
                             return;
 
@@ -649,7 +644,6 @@ namespace picongpu
             , m_slicePoint(slicePoint)
             , pluginName(name)
             , m_transpose(transpose)
-            , header(nullptr)
             , m_output(output)
             , isMaster(false)
             , reduce(1024)
@@ -672,10 +666,6 @@ namespace picongpu
         {
             /* wait that shared buffers can destroyed */
             m_output.join();
-            if(!m_notifyPeriod.empty())
-            {
-                MessageHeader::destroy(header);
-            }
         }
 
         std::string pluginGetName() const override
@@ -686,7 +676,7 @@ namespace picongpu
         void notify(uint32_t currentStep) override
         {
             PMACC_ASSERT(cellDescription != nullptr);
-            const DataSpace<simDim> localSize(cellDescription->getGridLayout().getDataSpaceWithoutGuarding());
+            const DataSpace<simDim> localSize(cellDescription->getGridLayout().sizeWithoutGuardND());
             Window window(MovingWindow::getInstance().getWindow(currentStep));
 
             /*sliceOffset is only used in 3D*/
@@ -727,27 +717,25 @@ namespace picongpu
 
             auto const mapper = makeAreaMapper<CORE + BORDER>(*cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg(SuperCellSize{});
-
             // create image fields
-            PMACC_LOCKSTEP_KERNEL(KernelPaintFields{}, workerCfg)
-            (mapper.getGridDim())(
-                fieldE->getDeviceDataBox(),
-                fieldB->getDeviceDataBox(),
-                fieldJ->getDeviceDataBox(),
-                img->getDeviceBuffer().getDataBox(),
-                m_transpose,
-                sliceOffset,
-                localDomainOffset,
-                sliceDim,
-                mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelPaintFields{})
+                .config(mapper.getGridDim(), SuperCellSize{})(
+                    fieldE->getDeviceDataBox(),
+                    fieldB->getDeviceDataBox(),
+                    fieldJ->getDeviceDataBox(),
+                    img->getDeviceBuffer().getDataBox(),
+                    m_transpose,
+                    sliceOffset,
+                    localDomainOffset,
+                    sliceDim,
+                    mapper);
 
             // find maximum for img.x()/y and z and return it as float3_X
-            int elements = img->getGridLayout().getDataSpace().productOfComponents();
+            int elements = img->getGridLayout().sizeND().productOfComponents();
 
             // Add one dimension access to 2d DataBox
             using D1Box = DataBoxDim1Access<typename GridBuffer<float3_X, 2U>::DataBoxType>;
-            D1Box d1access(img->getDeviceBuffer().getDataBox(), img->getGridLayout().getDataSpace());
+            D1Box d1access(img->getDeviceBuffer().getDataBox(), img->getGridLayout().sizeND());
 
             constexpr uint32_t cellsPerSupercell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
@@ -772,54 +760,74 @@ namespace picongpu
              * (because of the runtime dimension selection in any plugin),
              * thus we must use a one dimension kernel and no mapper
              */
-            PMACC_LOCKSTEP_KERNEL(vis_kernels::DivideAnyCell<cellsPerSupercell>{}, workerCfg)
-            ((elements + cellsPerSupercell - 1u) / cellsPerSupercell)(d1access, elements, max);
+            PMACC_LOCKSTEP_KERNEL(vis_kernels::DivideAnyCell<cellsPerSupercell>{})
+                .config(
+                    (elements + cellsPerSupercell - 1u) / cellsPerSupercell,
+                    SuperCellSize{})(d1access, elements, max);
 #endif
 
             // convert channels to RGB
-            PMACC_LOCKSTEP_KERNEL(vis_kernels::ChannelsToRGB<cellsPerSupercell>{}, workerCfg)
-            ((elements + cellsPerSupercell - 1u) / cellsPerSupercell)(d1access, elements);
+            PMACC_LOCKSTEP_KERNEL(vis_kernels::ChannelsToRGB<cellsPerSupercell>{})
+                .config((elements + cellsPerSupercell - 1u) / cellsPerSupercell, SuperCellSize{})(d1access, elements);
 
             // add density color channel
             DataSpace<simDim> blockSize(MappingDesc::SuperCellSize::toRT());
             DataSpace<DIM2> blockSize2D(blockSize[m_transpose.x()], blockSize[m_transpose.y()]);
 
-            auto particleWorkerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
             // create image particles
-            PMACC_LOCKSTEP_KERNEL(KernelPaintParticles3D{}, particleWorkerCfg)
-            (mapper.getGridDim(), blockSize2D.productOfComponents() * sizeof(float_X))(
-                particles->getDeviceParticlesBox(),
-                img->getDeviceBuffer().getDataBox(),
-                m_transpose,
-                sliceOffset,
-                localDomainOffset,
-                sliceDim,
-                mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelPaintParticles3D{})
+                .configSMem(mapper.getGridDim(), *particles, blockSize2D.productOfComponents() * sizeof(float_X))(
+                    particles->getDeviceParticlesBox(),
+                    img->getDeviceBuffer().getDataBox(),
+                    m_transpose,
+                    sliceOffset,
+                    localDomainOffset,
+                    sliceDim,
+                    mapper);
 
             // send the RGB image back to host
             img->deviceToHost();
 
 
-            header->update(*cellDescription, window, m_transpose, currentStep);
-
+            auto header = MessageHeader(window, m_transpose, currentStep);
 
             eventSystem::getTransactionEvent().waitForFinished(); // wait for copy picture
 
-            DataSpace<DIM2> size = img->getGridLayout().getDataSpace();
-
-            auto hostBox = img->getHostBuffer().getDataBox();
-
+            DataSpace<DIM2> size = img->getGridLayout().sizeND();
             if(picongpu::white_box_per_GPU)
             {
+                // mark local cell slice edges
+                auto hostBox = img->getHostBuffer().getDataBox();
                 hostBox({0, 0}) = float3_X(1.0, 1.0, 1.0);
                 hostBox({0, size.y() - 1}) = float3_X(1.0, 1.0, 1.0);
                 hostBox({size.x() - 1, 0}) = float3_X(1.0, 1.0, 1.0);
                 hostBox({size.x() - 1, size.y() - 1}) = float3_X(1.0, 1.0, 1.0);
             }
-            auto resultBox = gather(hostBox, *header);
+
+            auto picture = gather->gatherSlice(img->getHostBuffer(), header.sim.size, header.node.offset);
+
             if(isMaster)
             {
-                m_output(resultBox.shift(header->window.offset), header->window.size, *header);
+                auto numPixels = header.window.size.productOfComponents();
+                /* PNG output requires threadsafe linear memory.
+                 * PMacc buffers are not threadsafe because of the event system, therefore we use std::vector as
+                 * workaround.
+                 */
+                auto data = std::make_shared<std::vector<float3_X>>(numPixels);
+                auto& dataVec = *data.get();
+
+                // copy the gathered image into the linearized final buffer
+                auto picDBox = picture->getDataBox();
+                /* The gathered image contains data from outside the moving window, therefore we create
+                 * a 1D view into the window region.
+                 */
+                auto const picture1D = pmacc::DataBoxDim1Access<decltype(picDBox)>{
+                    picDBox.shift(header.window.offset),
+                    header.window.size};
+                for(int i = 0; i < numPixels; ++i)
+                    dataVec[i] = picture1D[i];
+
+                m_output(data, header);
             }
         }
 
@@ -828,29 +836,24 @@ namespace picongpu
             if(!m_notifyPeriod.empty())
             {
                 PMACC_ASSERT(cellDescription != nullptr);
-                const DataSpace<simDim> localSize(cellDescription->getGridLayout().getDataSpaceWithoutGuarding());
+                const DataSpace<simDim> localSize(cellDescription->getGridLayout().sizeWithoutGuardND());
 
                 Window window(MovingWindow::getInstance().getWindow(0));
                 sliceOffset = (int) ((float_32) (window.globalDimensions.size[sliceDim]) * m_slicePoint)
                     + window.globalDimensions.offset[sliceDim];
 
-
-                const DataSpace<simDim> gpus = Environment<simDim>::get().GridController().getGpuNodes();
-
-                float_32 cellSizeArr[3] = {0, 0, 0};
-                for(uint32_t i = 0; i < simDim; ++i)
-                    cellSizeArr[i] = cellSize[i];
-
-                header = MessageHeader::create();
-                header->update(*cellDescription, window, m_transpose, 0, cellSizeArr, gpus);
-
                 bool isDrawing = doDrawing();
-                isMaster = gather.init(isDrawing);
+
+                gather = std::make_unique<pmacc::mpi::GatherSlice>();
+                isMaster = gather->participate(isDrawing);
                 reduce.participate(isDrawing);
 
                 /* create memory for the local picture if the gpu participate on the visualization */
                 if(isDrawing)
-                    img = std::make_unique<GridBuffer<float3_X, DIM2>>(header->node.maxSize);
+                {
+                    auto header = MessageHeader(window, m_transpose, 0);
+                    img = std::make_unique<GridBuffer<float3_X, DIM2>>(header.node.maxSize);
+                }
             }
         }
 
@@ -892,10 +895,8 @@ namespace picongpu
         //! dimension to slice range [0,simDim)
         uint32_t sliceDim;
 
-        MessageHeader* header;
-
         Output m_output;
-        GatherSlice gather;
+        std::unique_ptr<pmacc::mpi::GatherSlice> gather;
         bool isMaster;
         algorithms::GlobalReduce reduce;
     };

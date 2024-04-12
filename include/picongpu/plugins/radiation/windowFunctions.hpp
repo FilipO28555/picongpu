@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -34,7 +34,7 @@ namespace picongpu
 
             namespace radWindowFunctionTriangle
             {
-                struct radWindowFunction
+                struct RadWindowFunction
                 {
                     /** 1D Window function according to the triangle window:
                      *
@@ -62,7 +62,7 @@ namespace picongpu
 
             namespace radWindowFunctionHamming
             {
-                struct radWindowFunction
+                struct RadWindowFunction
                 {
                     /** 1D Window function according to the Hamming window:
                      *
@@ -92,7 +92,7 @@ namespace picongpu
 
             namespace radWindowFunctionTriplett
             {
-                struct radWindowFunction
+                struct RadWindowFunction
                 {
                     /** 1D Window function according to the Triplett window:
                      *
@@ -122,7 +122,7 @@ namespace picongpu
 
             namespace radWindowFunctionGauss
             {
-                struct radWindowFunction
+                struct RadWindowFunction
                 {
                     /** 1D Window function according to the Gauss window:
                      *
@@ -152,7 +152,7 @@ namespace picongpu
 
             namespace radWindowFunctionNone
             {
-                struct radWindowFunction
+                struct RadWindowFunction
                 {
                     /** 1D Window function according to the no window:
                      *

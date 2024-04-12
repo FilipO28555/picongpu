@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -64,7 +64,7 @@ namespace picongpu
 
                             float_64 const initFreeBeta = math::sqrt(1.0 - 1.0 / (myGamma * myGamma));
 
-                            float3_X const driftDirection(ParamClass().direction);
+                            float3_X const driftDirection = ParamClass::driftDirection;
                             float3_X const normDir = driftDirection / pmacc::math::l2norm(driftDirection);
 
                             float3_X const mom(

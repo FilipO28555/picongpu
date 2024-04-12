@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -22,7 +22,6 @@
 #pragma once
 
 #include "pmacc/eventSystem/events/EventTask.hpp"
-#include "pmacc/eventSystem/streams/EventStream.hpp"
 #include "pmacc/eventSystem/transactions/Transaction.hpp"
 
 #include <stack>
@@ -59,7 +58,6 @@ namespace pmacc
          * Synchronizes a blocking operation with events on the top-most transaction.
          *
          * @param op operation type for synchronization
-         * @return an EventStream which can be used for StreamTasks
          */
         void startOperation(ITask::TaskType op);
 

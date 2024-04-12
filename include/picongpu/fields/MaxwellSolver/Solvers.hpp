@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -20,6 +20,7 @@
 #pragma once
 
 #include "picongpu/fields/MaxwellSolver/ArbitraryOrderFDTD/ArbitraryOrderFDTD.hpp"
+#include "picongpu/fields/MaxwellSolver/CKC/CKC.hpp"
 #include "picongpu/fields/MaxwellSolver/FDTD/FDTD.hpp"
 #include "picongpu/fields/MaxwellSolver/Lehe/Lehe.hpp"
 #include "picongpu/fields/MaxwellSolver/None/None.hpp"

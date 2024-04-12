@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -92,12 +92,23 @@ namespace pmacc
 
         /** Return index of a supercell to be processed by the given alpaka block
          *
+         * @tparam T_origin Which origin (CORE/BORDER/GUARD) to return supercell index relative to (default: GUARD)
          * @param blockIdx alpaka block index
          * @return mapped SuperCell index including guards
          */
+        template<uint32_t T_origin = GUARD>
         HDINLINE DataSpace<DIM> getSuperCellIndex(const DataSpace<DIM>& blockIdx) const
         {
-            return ExchangeMappingMethods<areaType, DIM>::getSuperCellIndex(*this, blockIdx, exchangeType);
+            auto result = ExchangeMappingMethods<areaType, DIM>::getSuperCellIndex(*this, blockIdx, exchangeType);
+            if constexpr(T_origin == CORE)
+            {
+                result = result - 2 * this->getGuardingSuperCells();
+            }
+            if constexpr(T_origin == BORDER)
+            {
+                result = result - this->getGuardingSuperCells();
+            }
+            return result;
         }
     };
 

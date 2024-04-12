@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include "pmacc/dimensions/DataSpace.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/dimensions/SuperCellDescription.hpp"
 #include "pmacc/lockstep.hpp"
 #include "pmacc/types.hpp"
@@ -72,13 +71,13 @@ namespace pmacc
         DINLINE void operator()(T_Worker const& worker, T_Functor& functor, T_Args&&... args)
         {
             lockstep::makeForEach<math::CT::volume<DomainSize>::type::value>(worker)(
-                [&](uint32_t const linearIdx)
+                [&](int32_t const linearIdx)
                 {
                     /* offset (in elements) of the current processed element relative
                      * to the origin of the core domain
                      */
-                    DataSpace<dim> const offset(
-                        DataSpaceOperations<dim>::template map<DomainSize>(linearIdx) - OffsetOrigin::toRT());
+                    DataSpace<dim> const offset
+                        = pmacc::math::mapToND(DomainSize::toRT(), linearIdx) - OffsetOrigin::toRT();
                     functor(worker, args(offset)...);
                 });
         }

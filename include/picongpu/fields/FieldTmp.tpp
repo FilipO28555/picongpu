@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -82,7 +82,7 @@ namespace picongpu
          *  Problem: buffers don't allow "bigger" exchange during run time.
          *           so let's stay with the maximum guards.
          */
-        const DataSpace<simDim> coreBorderSize = cellDescription.getGridLayout().getDataSpaceWithoutGuarding();
+        const DataSpace<simDim> coreBorderSize = cellDescription.getGridLayout().sizeWithoutGuardND();
 
         using VectorSpeciesWithInterpolation =
             typename pmacc::particles::traits::FilterByFlag<VectorAllSpecies, interpolation<>>::type;
@@ -181,11 +181,10 @@ namespace picongpu
         const uint32_t currentStep = Environment<>::get().SimulationDescription().getCurrentStep();
         auto iFilter = particles::filter::IUnary<ParticleFilter>{currentStep};
 
-        auto workerCfg = lockstep::makeWorkerCfg<ParticlesClass::ParticlesBoxType::FrameType::frameSize>();
         do
         {
-            PMACC_LOCKSTEP_KERNEL(KernelComputeSupercells<BlockArea>{}, workerCfg)
-            (mapper.getGridDim())(tmpBox, pBox, solver, iFilter, mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelComputeSupercells<BlockArea>{})
+                .config(mapper.getGridDim(), pBox)(tmpBox, pBox, solver, iFilter, mapper);
         } while(mapper.next());
     }
 
@@ -196,9 +195,8 @@ namespace picongpu
         FieldTmp::DataBoxType thisBox = this->fieldTmp->getDeviceBuffer().getDataBox();
         const auto modifyingBox = modifyingField.getGridBuffer().getDeviceBuffer().getDataBox();
 
-        auto const workerCfg = lockstep::makeWorkerCfg(SuperCellSize{});
         using Kernel = ModifyByFieldKernel<T_ModifyingOperation, MappingDesc::SuperCellSize>;
-        PMACC_LOCKSTEP_KERNEL(Kernel{}, workerCfg)(mapper.getGridDim())(mapper, thisBox, modifyingBox);
+        PMACC_LOCKSTEP_KERNEL(Kernel{}).config(mapper.getGridDim(), SuperCellSize{})(mapper, thisBox, modifyingBox);
     }
 
     SimulationDataId FieldTmp::getUniqueId(uint32_t slotId)

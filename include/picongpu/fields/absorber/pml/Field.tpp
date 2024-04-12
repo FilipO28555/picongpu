@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -28,6 +28,7 @@
 #include <pmacc/memory/buffers/GridBuffer.hpp>
 
 #include <cstdint>
+#include <memory>
 
 
 namespace picongpu
@@ -67,7 +68,7 @@ namespace picongpu
                         Thickness const& globalThickness)
                     {
                         // All sizes are without guard, since Pml is only on the internal area
-                        auto const gridDataSpace = gridLayout.getDataSpaceWithoutGuarding();
+                        auto const gridDataSpace = gridLayout.sizeWithoutGuardND();
                         auto const nonPmlDataSpace = gridDataSpace
                             - (globalThickness.getPositiveBorder() + globalThickness.getNegativeBorder());
                         auto const numGridCells = gridDataSpace.productOfComponents();
@@ -110,7 +111,7 @@ namespace picongpu
                     Thickness const& globalThickness,
                     DataBox box)
                     : box(box)
-                    , guardSize(gridLayout.getGuard())
+                    , guardSize(gridLayout.guardSizeND())
 
                 {
                     auto const negativeSize = globalThickness.getNegativeBorder();
@@ -118,7 +119,7 @@ namespace picongpu
                     /* The region of interest is grid without guard,
                      * which consists of PML and internal area
                      */
-                    auto const gridSize = gridLayout.getDataSpaceWithoutGuarding();
+                    auto const gridSize = gridLayout.sizeWithoutGuardND();
                     auto const positiveBegin = gridSize - positiveSize;
 
                     // Note: since this should compile for 2d, .z( ) can't be used
@@ -244,7 +245,7 @@ namespace picongpu
                     size[0] = detail::getOuterLayerBoxLinearSize(gridLayout, globalThickness);
                     auto const guardSize = pmacc::DataSpace<simDim>::create(0);
                     auto const layout = pmacc::GridLayout<simDim>(size, guardSize);
-                    data.reset(new Buffer(layout));
+                    data = std::make_unique<Buffer>(layout);
                 }
 
                 Field::Buffer& Field::getGridBuffer()
@@ -269,9 +270,8 @@ namespace picongpu
 
                 Field::OuterLayerBoxType Field::getDeviceOuterLayerBox()
                 {
-                    auto const boxWrapper1d = pmacc::DataBoxDim1Access<DataBoxType>{
-                        getDeviceDataBox(),
-                        data->getGridLayout().getDataSpace()};
+                    auto const boxWrapper1d
+                        = pmacc::DataBoxDim1Access<DataBoxType>{getDeviceDataBox(), data->getGridLayout().sizeND()};
                     /* Note: the outer layer box type just provides access to data,
                      * it does not own or make copy of the data (nor is that required)
                      */

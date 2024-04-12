@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -39,7 +39,7 @@ namespace pmacc
 
             HDINLINE result operator()(double value)
             {
-#if(CUPLA_DEVICE_COMPILE == 1) // we are on gpu
+#if(PMACC_DEVICE_COMPILE == 1) // we are on gpu
                 return ::__double2int_ru(value);
 #else
                 return static_cast<int>(ceil(value));
@@ -54,7 +54,7 @@ namespace pmacc
 
             HDINLINE result operator()(double value)
             {
-#if(CUPLA_DEVICE_COMPILE == 1) // we are on gpu
+#if(PMACC_DEVICE_COMPILE == 1) // we are on gpu
                 return ::__double2int_rd(value);
 #else
                 return static_cast<int>(floor(value));
@@ -69,7 +69,7 @@ namespace pmacc
 
             HDINLINE result operator()(double value)
             {
-#if(CUPLA_DEVICE_COMPILE == 1) // we are on gpu
+#if(PMACC_DEVICE_COMPILE == 1) // we are on gpu
                 return ::__double2int_rn(value);
 #else
                 if(value < 0.0)

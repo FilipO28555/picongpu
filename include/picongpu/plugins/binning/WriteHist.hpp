@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -25,8 +25,11 @@
 
 #include "picongpu/plugins/binning/UnitConversion.hpp"
 #include "picongpu/plugins/binning/utility.hpp"
-#include "picongpu/plugins/common/openPMDDefaultExtension.hpp"
+#include "picongpu/plugins/common/openPMDVersion.def"
 #include "picongpu/plugins/common/stringHelpers.hpp"
+
+#include <memory>
+#include <optional>
 
 #include <openPMD/openPMD.hpp>
 
@@ -34,8 +37,11 @@ namespace picongpu
 {
     namespace plugins::binning
     {
-        struct WriteOpenPMDParams
+        struct OpenPMDWriteParams
         {
+            std::string const& dir;
+            std::string const& outputName;
+            std::string const& infix;
             std::string const& extension;
             std::string const& jsonConfig;
         };
@@ -46,37 +52,58 @@ namespace picongpu
          */
         class WriteHist
         {
-        private:
-            std::string openPMDSuffix = "_%T." + openPMD::getDefaultExtension(openPMD::ExtensionPreference::HDF5);
-
         public:
             template<typename T_Type, typename T_BinningData>
             void operator()(
-                HostBuffer<T_Type, 1u>& hReducedBuffer,
+                std::optional<::openPMD::Series>& maybe_series,
+                OpenPMDWriteParams params,
+                std::unique_ptr<HostBuffer<T_Type, 1u>> hReducedBuffer,
                 T_BinningData binningData,
-                std::string const& dir,
-                // WriteOpenPMDParams const& params,
-                std::array<double, 7> outputUnits,
-                const uint32_t currentStep)
+                const std::array<double, 7>& outputUnits,
+                const uint32_t currentStep,
+                const bool isCheckpoint = false,
+                const uint32_t accumulateCounter = 0)
             {
                 using Type = T_Type;
 
-                // auto const& [extension, jsonConfig] = params;
-                auto const& extension = openPMDSuffix;
-                std::ostringstream filename;
-                if(std::any_of(extension.begin(), extension.end(), [](char const c) { return c == '.'; }))
+                if(!maybe_series.has_value())
                 {
-                    filename << binningData.binnerOutputName << extension;
-                }
-                else
-                {
-                    filename << binningData.binnerOutputName << '.' << extension;
+                    auto const& extension = params.extension;
+                    std::ostringstream filename;
+                    filename << params.outputName;
+                    if(auto& infix = params.infix; !infix.empty())
+                    {
+                        if(*infix.begin() != '_')
+                        {
+                            filename << '_';
+                        }
+                        if(*infix.rbegin() == '.')
+                        {
+                            filename << infix.substr(0, infix.size() - 1);
+                        }
+                        else
+                        {
+                            filename << infix;
+                        }
+                    }
+                    if(*extension.begin() == '.')
+                    {
+                        filename << extension;
+                    }
+                    else
+                    {
+                        filename << '.' << extension;
+                    }
+
+                    maybe_series = ::openPMD::Series(
+                        params.dir + '/' + filename.str(),
+                        ::openPMD::Access::CREATE,
+                        params.jsonConfig);
                 }
 
-                auto series = ::openPMD::Series(dir + '/' + filename.str(), ::openPMD::Access::CREATE);
+                auto& series = *maybe_series;
 
                 /* begin recommended openPMD global attributes */
-                // series.setMeshesPath(meshesPathName);
                 const std::string software("PIConGPU");
                 std::stringstream softwareVersion;
                 softwareVersion << PICONGPU_VERSION_MAJOR << "." << PICONGPU_VERSION_MINOR << "."
@@ -163,8 +190,21 @@ namespace picongpu
                 record.setUnitSI(get_conversion_factor(outputUnits));
 
                 record.resetDataset({::openPMD::determineDatatype<Type>(), histExtent});
-                std::shared_ptr<Type> data(hReducedBuffer.getBasePointer(), [](auto const&) {});
-                record.storeChunk<Type>(data, histOffset, histExtent);
+                auto base_ptr = hReducedBuffer->data();
+                ::openPMD::UniquePtrWithLambda<Type> data(
+                    base_ptr,
+                    [hReducedBuffer
+                     = std::make_shared<decltype(hReducedBuffer)>(std::move(hReducedBuffer))](auto const*)
+                    {
+                        /* no-op, destroy data via destructor of captured hReducedBuffer */
+                    });
+                record.storeChunk<Type>(std::move(data), histOffset, histExtent);
+                if(isCheckpoint)
+                {
+                    iteration.setAttribute("accCounter", accumulateCounter);
+                }
+
+                iteration.close();
             };
         };
     } // namespace plugins::binning

@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include "pmacc/dimensions/DataSpace.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/types.hpp"
 
 #include <cstdint>
@@ -61,12 +60,12 @@ namespace pmacc
 
         HDINLINE decltype(auto) operator[](const int idx) const
         {
-            return Base::operator[](DataSpaceOperations<Dim>::map(originalSize, idx));
+            return Base::operator[](pmacc::math::mapToND(originalSize, idx));
         }
 
         HDINLINE decltype(auto) operator[](const int idx)
         {
-            return Base::operator[](DataSpaceOperations<Dim>::map(originalSize, idx));
+            return Base::operator[](pmacc::math::mapToND(originalSize, idx));
         }
 
     private:

@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -56,7 +56,7 @@ namespace pmacc
                             const Data value = 255;
                             hostBuffer.setValue(value);
 
-                            auto ptr = hostBuffer.getPointer();
+                            auto ptr = hostBuffer.data();
                             for(size_t j = 0; j < static_cast<size_t>(dataSpace.productOfComponents()); ++j)
                             {
                                 REQUIRE(ptr[j] == value);

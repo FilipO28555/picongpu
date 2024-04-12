@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -140,7 +140,7 @@ namespace picongpu
 
                 // unit vector in the direction of the vector
 
-                HDINLINE cuda_vec<V, T> unit_vec(void) const
+                HDINLINE cuda_vec<V, T> unitVec(void) const
                 {
                     return *this / magnitude();
                 }

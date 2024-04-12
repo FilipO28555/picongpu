@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -22,9 +22,6 @@
 #include "picongpu/simulation_defines.hpp"
 
 #include "picongpu/plugins/binning/binnerPlugin.hpp"
-
-#include <pmacc/meta/errorHandlerPolicies/ThrowValueNotFound.hpp>
-#include <pmacc/particles/meta/FindByNameOrType.hpp>
 
 namespace picongpu
 {
@@ -50,9 +47,8 @@ namespace picongpu
             auto getPositionY
                 = [] ALPAKA_FN_ACC(auto const& domainInfo, auto const& worker, auto const& particle) -> int
             {
-                const int linearCellIdx = particle[localCellIdx_];
-                pmacc::DataSpace<SIMDIM> const cellIdx
-                    = pmacc::DataSpaceOperations<SIMDIM>::template map<SuperCellSize>(linearCellIdx);
+                int const linearCellIdx = particle[localCellIdx_];
+                DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearCellIdx);
                 auto relative_cellpos = domainInfo.globalOffset + domainInfo.localOffset + domainInfo.blockCellOffset;
                 auto posBin = cellIdx + relative_cellpos;
                 return posBin[1];
@@ -95,20 +91,16 @@ namespace picongpu
 
             /// Axis 3
             // Define Functor
-            auto getTime
+            auto getTimeStep
                 = [] ALPAKA_FN_ACC(auto const& domainInfo, auto const& worker, auto const& particle) -> uint32_t
             { return domainInfo.currentStep; };
 
-            // Define units
-            std::array<double, 7> timeDimension{};
-            momentumDimension[SIBaseUnits::time] = 1.0;
-
             // Create Functor Description
-            auto timeDescription = createFunctorDescription<uint32_t>(getTime, "time_axis", timeDimension);
+            auto timeStepDescription = createFunctorDescription<uint32_t>(getTimeStep, "time_axis");
 
             // Create Axis
-            auto ax_time
-                = axis::createLinear(axis::AxisSplitting(axis::Range<uint32_t>{0, 2000}, 2000), timeDescription);
+            auto ax_timeStep
+                = axis::createLinear(axis::AxisSplitting(axis::Range<uint32_t>{0, 2000}, 2000), timeStepDescription);
 
 
             // Bring the axes together in a tuple
@@ -156,14 +148,6 @@ namespace picongpu
                     = [] ALPAKA_FN_ACC(auto const& worker, auto const& particle) -> float_X { return 1.0; };
                 auto getCounts = createFunctorDescription<float_X>(getParticleCount, "Counts");
 
-                /**
-                 * define notify period, dump frequency, normalizeByBinVolume, time averaging
-                 * Note that steps in time averaging are "notify steps" not simulation steps
-                 */
-                uint32_t dataDumpNNotifies = 0u;
-                bool enableTimeAveraging = true;
-                std::string notifyPeriod = "1:500";
-                bool normalizeByBinVolume = true;
 
                 /**
                  * Gives access to series, iteration and mesh to the user
@@ -177,26 +161,15 @@ namespace picongpu
                     [ax_py](::openPMD::Series& series, ::openPMD::Iteration& iteration, ::openPMD::Mesh& mesh) -> void
                 { mesh.setAttribute("p_nbins", ax_py.getNBins()); };
 
-                binningCreator.addBinner(
-                    "chargeDensityBinning",
-                    axisTuple,
-                    speciesTuple,
-                    chargeDepositionData,
-                    notifyPeriod,
-                    dataDumpNNotifies,
-                    enableTimeAveraging,
-                    normalizeByBinVolume,
-                    writeOpenPMD);
+                binningCreator
+                    .addBinner("chargeDensityBinning", axisTuple, speciesTuple, chargeDepositionData, writeOpenPMD)
+                    .setNotifyPeriod("1:500")
+                    .setJsonCfg(R"({"hdf5":{"dataset":{"chunks":"auto"}}})")
+                    .setOpenPMDExtension("h5");
 
-                binningCreator.addBinner(
-                    "particleBinning",
-                    createTuple(ax_time, ax_py),
-                    speciesTuple,
-                    getCounts,
-                    "1::",
-                    2000,
-                    false,
-                    false);
+                binningCreator.addBinner("particleBinning", createTuple(ax_timeStep, ax_py), speciesTuple, getCounts)
+                    .setDumpPeriod(2000)
+                    .setNormalizeByBinVolume(false);
             }
         }
     } // namespace plugins::binning

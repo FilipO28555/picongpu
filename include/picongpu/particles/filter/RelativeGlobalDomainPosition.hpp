@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -79,8 +79,8 @@ namespace picongpu
                         using SuperCellSize = typename T_Particle::SuperCellSize;
 
                         int const particleCellIdx = particle[localCellIdx_];
-                        DataSpace<simDim> const cellInSuperCell(
-                            DataSpaceOperations<simDim>::template map<SuperCellSize>(particleCellIdx));
+                        DataSpace<simDim> const cellInSuperCell
+                            = pmacc::math::mapToND(SuperCellSize::toRT(), particleCellIdx);
                         DataSpace<simDim> const globalParticleOffset(globalSuperCellOffset + cellInSuperCell);
 
                         float_X const relativePosition = float_X(globalParticleOffset[Params::dimension])

@@ -11,7 +11,7 @@
 #
 # PMacc is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License and the GNU Lesser General Public License
 # for more details.
 #
@@ -109,7 +109,7 @@ foreach(dim 2 3)
         get_filename_component(testCaseFilename ${testCaseFilepath} NAME)
         string(REPLACE "UT.cpp" "" testCase ${testCaseFilename})
         set(testExe "${PROJECT_NAME}-${testCase}-${dim}D")
-        cupla_add_executable(${testExe} ${testCaseFilepath})
+        alpaka_add_executable(${testExe} ${testCaseFilepath})
         target_compile_definitions(${testExe} PRIVATE TEST_DIM=${dim})
         target_link_libraries(${testExe} PUBLIC Catch2 Catch2WithMain)
         target_link_libraries(${testExe} PRIVATE pmacc::pmacc)

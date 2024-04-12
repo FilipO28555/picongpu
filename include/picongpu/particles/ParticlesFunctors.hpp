@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -72,7 +72,7 @@ namespace picongpu
             using FrameType = typename SpeciesType::FrameType;
 
             template<typename T_DeviceHeap, typename T_CellDescription>
-            HINLINE void operator()(const std::shared_ptr<T_DeviceHeap>& deviceHeap, T_CellDescription* cellDesc) const
+            HINLINE void operator()(std::shared_ptr<T_DeviceHeap> const& deviceHeap, T_CellDescription* cellDesc) const
             {
                 DataConnector& dc = Environment<>::get().DataConnector();
                 dc.consume(std::make_unique<SpeciesType>(deviceHeap, *cellDesc, FrameType::getName()));
@@ -93,10 +93,11 @@ namespace picongpu
             HINLINE void operator()(const std::shared_ptr<T_DeviceHeap>& deviceHeap) const
             {
 #if(BOOST_LANG_CUDA || BOOST_COMP_HIP)
+                auto alpakaStream = pmacc::eventSystem::getEventStream(ITask::TASK_DEVICE)->getCudaStream();
                 log<picLog::MEMORY>("mallocMC: free slots for species %3%: %1% a %2%")
                     % deviceHeap->getAvailableSlots(
-                        cupla::manager::Device<cupla::AccDev>::get().current(),
-                        cupla::manager::Stream<cupla::AccDev, cupla::AccStream>::get().stream(0),
+                        manager::Device<ComputeDevice>::get().current(),
+                        alpakaStream,
                         sizeof(FrameType))
                     % sizeof(FrameType) % FrameType::getName();
 #endif

@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -43,12 +43,12 @@ namespace pmacc
 
         void init() override
         {
-            auto* src = exchange->getCommunicationBuffer();
+            auto cPtr = exchange->getCPtrCurrentSize();
 
             this->request = Environment<DIM>::get().EnvironmentController().getCommunicator().startSend(
                 exchange->getExchangeType(),
-                reinterpret_cast<char*>(src->getPointer()),
-                src->getCurrentSize() * sizeof(TYPE),
+                cPtr.asCharPtr(),
+                cPtr.sizeInBytes(),
                 exchange->getCommunicationTag());
         }
 

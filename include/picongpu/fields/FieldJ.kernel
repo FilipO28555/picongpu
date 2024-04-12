@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -28,7 +28,6 @@
 #include "picongpu/fields/currentDeposition/Strategy.def"
 #include "picongpu/traits/attribute/DampedWeighting.hpp"
 
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/lockstep.hpp>
 #include <pmacc/math/operation.hpp>
 #include <pmacc/particles/algorithm/ForEach.hpp>
@@ -78,8 +77,7 @@ namespace picongpu
             {
                 using SuperCellSize = typename Mapping::SuperCellSize;
 
-                const DataSpace<simDim> superCellIdx(
-                    mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+                const DataSpace<simDim> superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
                 auto forEachParticle = pmacc::particles::algorithm::acc::makeForEach(worker, boxPar, superCellIdx);
 
@@ -126,7 +124,7 @@ namespace picongpu
                 const float_X charge = attribute::getCharge(dampedWeighting, particle);
                 const floatD_X pos = particle[position_];
                 const int particleCellIdx = particle[localCellIdx_];
-                const DataSpace<simDim> localCell(DataSpaceOperations<simDim>::template map<TVec>(particleCellIdx));
+                const DataSpace<simDim> localCell = pmacc::math::mapToND(TVec::toRT(), particleCellIdx);
 
                 // The rest uses normal weighting
                 const float_X weighting = particle[weighting_];

@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -20,9 +20,16 @@
 #pragma once
 
 #include "picongpu/plugins/binning/BinningFunctors.hpp"
-#include "picongpu/plugins/binning/DomainInfo.hpp"
 #include "picongpu/plugins/binning/WriteHist.hpp"
 #include "picongpu/plugins/binning/utility.hpp"
+
+#include <pmacc/mpi/MPIReduce.hpp>
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+
+#include <openPMD/Series.hpp>
 
 
 namespace picongpu
@@ -50,7 +57,7 @@ namespace picongpu
                 const T_DepositedQuantity factor,
                 T_DataBox dataBox) const
             {
-                auto blockIdx = cupla::blockIdx(worker.getAcc()).x * blockSize;
+                auto blockIdx = worker.blockDomIdxND().x() * blockSize;
                 auto forEachElemInDataboxChunk = lockstep::makeForEach<blockSize>(worker);
                 forEachElemInDataboxChunk(
                     [&](int32_t const linearIdx)
@@ -90,7 +97,7 @@ namespace picongpu
                 T_DataBox histBox) const
             {
                 // @todo check normDataBox shape is same as histBox
-                auto blockIdx = cupla::blockIdx(worker.getAcc()).x * blockSize;
+                auto blockIdx = worker.blockDomIdxND().x() * blockSize;
                 auto forEachElemInDataboxChunk = lockstep::makeForEach<blockSize>(worker);
                 forEachElemInDataboxChunk(
                     [&](int32_t const linearIdx)
@@ -98,8 +105,7 @@ namespace picongpu
                         int32_t const linearTid = blockIdx + linearIdx;
                         if(linearTid < extentsDataspace.productOfComponents())
                         {
-                            pmacc::DataSpace<nAxes> const nDIdx
-                                = pmacc::DataSpaceOperations<nAxes>::map(extentsDataspace, linearTid);
+                            pmacc::DataSpace<nAxes> const nDIdx = pmacc::math::mapToND(extentsDataspace, linearTid);
                             float_X factor = 1.;
                             apply(
                                 [&](auto const&... tupleArgs)
@@ -116,7 +122,7 @@ namespace picongpu
             }
         };
 
-        void dimensionSubtraction(std::array<double, 7>& outputDims, const std::array<double, 7>& axisDims)
+        HINLINE void dimensionSubtraction(std::array<double, 7>& outputDims, const std::array<double, 7>& axisDims)
         {
             for(size_t i = 0; i < 7; i++)
             {
@@ -125,34 +131,43 @@ namespace picongpu
         }
 
         template<typename TBinningData>
-        class Binner : public INotify
+        class Binner : public IPlugin
         {
             using TDepositedQuantity = typename TBinningData::DepositedQuantityType;
 
+            friend class BinningCreator;
+
         private:
+            std::string pluginName; /** @brief name used for restarts */
             TBinningData binningData;
             MappingDesc* cellDescription;
             std::unique_ptr<HostDeviceBuffer<TDepositedQuantity, 1>> histBuffer;
             uint32_t accumulateCounter = 0;
             mpi::MPIReduce reduce{};
-            bool isMaster = false;
+            bool isMain = false;
             WriteHist histWriter;
+            std::optional<::openPMD::Series> m_series;
 
         public:
             Binner(TBinningData bd, MappingDesc* cellDesc) : binningData{bd}, cellDescription{cellDesc}
             {
-                Environment<>::get().PluginConnector().setNotificationPeriod(this, binningData.notifyPeriod);
-
+                this->pluginName = "binner_" + binningData.binnerOutputName;
                 /**
                  * Allocate and manage global histogram memory here, to facilitate time averaging
                  * @todo for auto n_bins. allocate full size buffer here. dont init axisExtents yet
                  */
                 this->histBuffer = std::make_unique<HostDeviceBuffer<TDepositedQuantity, 1>>(
                     binningData.axisExtentsND.productOfComponents());
-                this->histBuffer->getDeviceBuffer().setValue(TDepositedQuantity(0.0));
+                isMain = reduce.hasResult();
             }
 
-            ~Binner() override = default;
+            ~Binner() override
+            {
+                if(m_series.has_value())
+                {
+                    m_series->close();
+                }
+            }
 
             void notify(uint32_t currentStep) override
             {
@@ -176,22 +191,9 @@ namespace picongpu
                 ++accumulateCounter;
                 if(accumulateCounter >= binningData.dumpPeriod)
                 {
-                    auto outputUnits = binningData.depositionData.units;
+                    auto bufferExtent = this->histBuffer->getHostBuffer().capacityND();
 
-                    // do the mpi reduce
-                    this->histBuffer->deviceToHost();
-                    auto bufferExtent = this->histBuffer->getDeviceBuffer().getDataSpace();
-
-                    // allocate this only once?
-                    auto hReducedBuffer = HostBuffer<TDepositedQuantity, 1>(bufferExtent);
-
-                    reduce(
-                        pmacc::math::operation::Add(),
-                        hReducedBuffer.getBasePointer(),
-                        this->histBuffer->getHostBuffer().getBasePointer(),
-                        bufferExtent[0], // this is a 1D dataspace, just access it?
-                        mpi::reduceMethods::Reduce());
-
+                    // Do time Averaging
                     if(binningData.dumpPeriod > 1 && binningData.timeAveraging)
                     {
                         TDepositedQuantity factor = 1.0 / static_cast<double>(binningData.dumpPeriod);
@@ -199,19 +201,20 @@ namespace picongpu
                         constexpr uint32_t blockSize = 256u;
                         // @todo is + blocksize - 1/ blocksize a better ceil for ints
                         auto gridSize = (bufferExtent[0] + blockSize - 1) / blockSize;
-                        // auto gridSize = ceil(
-                        //     static_cast<double>(bufferExtent[0]) /
-                        //     static_cast<double>(blockSize));
-
-                        auto workerCfg = pmacc::lockstep::makeWorkerCfg<blockSize>();
 
                         auto productKernel = ProductKernel<blockSize, TBinningData::getNAxes()>();
 
-                        PMACC_LOCKSTEP_KERNEL(productKernel, workerCfg)
-                        (gridSize)(binningData.axisExtentsND, factor, hReducedBuffer.getDataBox());
+                        PMACC_LOCKSTEP_KERNEL(productKernel)
+                            .template config<blockSize>(gridSize)(
+                                binningData.axisExtentsND,
+                                factor,
+                                this->histBuffer->getDeviceBuffer().getDataBox());
                     }
 
-                    // @todo When doing time averaging, this normalization is not be stable across time for auto bins
+                    // A copy in case units change during normalization, and we need the original units for OpenPMD
+                    auto outputUnits = binningData.depositionData.units;
+                    // @todo During time averaging, this normalization is not be constant across time for auto bins
+                    // Do normalization
                     if(binningData.normalizeByBinVolume)
                     {
                         // @todo think about printing out the normalization too
@@ -219,15 +222,16 @@ namespace picongpu
                         // ceil
                         auto gridSize = (bufferExtent[0] + blockSize - 1) / blockSize;
 
-                        auto workerCfg = pmacc::lockstep::makeWorkerCfg<blockSize>();
-
                         auto normKernel = BinNormalizationKernel<blockSize, TBinningData::getNAxes()>();
 
                         auto axisKernels
                             = tupleMap(binningData.axisTuple, [&](auto axis) { return axis.getAxisKernel(); });
 
-                        PMACC_LOCKSTEP_KERNEL(normKernel, workerCfg)
-                        (gridSize)(binningData.axisExtentsND, axisKernels, hReducedBuffer.getDataBox());
+                        PMACC_LOCKSTEP_KERNEL(normKernel)
+                            .template config<blockSize>(gridSize)(
+                                binningData.axisExtentsND,
+                                axisKernels,
+                                this->histBuffer->getDeviceBuffer().getDataBox());
 
                         // change output dimensions
                         apply(
@@ -235,13 +239,35 @@ namespace picongpu
                             { ((dimensionSubtraction(outputUnits, tupleArgs.units)), ...); },
                             binningData.axisTuple);
                     }
-                    // print output from master
-                    if(reduce.hasResult(mpi::reduceMethods::Reduce()))
+
+
+                    // do the mpi reduce
+                    this->histBuffer->deviceToHost();
+
+                    // allocate this only once?
+                    // using a unique_ptr here since HostBuffer does not implement move semantics
+                    auto hReducedBuffer = std::make_unique<HostBuffer<TDepositedQuantity, 1>>(bufferExtent);
+
+                    reduce(
+                        pmacc::math::operation::Add(),
+                        hReducedBuffer->data(),
+                        this->histBuffer->getHostBuffer().data(),
+                        bufferExtent[0],
+                        mpi::reduceMethods::Reduce());
+
+                    if(isMain)
                     {
+                        // print output from master
                         histWriter(
-                            hReducedBuffer,
+                            m_series,
+                            OpenPMDWriteParams{
+                                std::string("binningOpenPMD/"),
+                                binningData.binnerOutputName,
+                                binningData.openPMDInfix,
+                                binningData.openPMDExtension,
+                                binningData.jsonCfg},
+                            std::move(hReducedBuffer),
                             binningData,
-                            std::string("binningOpenPMD/"),
                             outputUnits,
                             currentStep);
                     }
@@ -251,16 +277,114 @@ namespace picongpu
                 }
             }
 
-            void restart(uint32_t restartStep, const std::string restartDirectory)
+            void pluginRegisterHelp(po::options_description& desc) override
             {
-                /* restart from a checkpoint here
-                 * will be called only once per simulation and before notify() */
             }
 
-            void checkpoint(uint32_t currentStep, const std::string restartDirectory)
+            std::string pluginGetName() const override
             {
-                /* create a persistent checkpoint here
-                 * will be called before notify() if both will be called for the same timestep */
+                return pluginName;
+            }
+
+            void checkpoint(uint32_t currentStep, const std::string restartDirectory) override
+            {
+                /**
+                 * State to hold, accumulateCounter and hReducedBuffer
+                 */
+
+                // do the mpi reduce (can be avoided if the notify did a data dump and histBuffer is empty)
+                this->histBuffer->deviceToHost();
+                auto bufferExtent = this->histBuffer->getHostBuffer().capacityND();
+
+                // allocate this only once?
+                // using a unique_ptr here since HostBuffer does not implement move semantics
+                auto hReducedBuffer = std::make_unique<HostBuffer<TDepositedQuantity, 1>>(bufferExtent);
+
+                reduce(
+                    pmacc::math::operation::Add(),
+                    hReducedBuffer->data(),
+                    this->histBuffer->getHostBuffer().data(),
+                    bufferExtent[0], // this is a 1D dataspace, just access it?
+                    mpi::reduceMethods::Reduce());
+
+                if(isMain)
+                {
+                    std::optional<::openPMD::Series> ckpt_series;
+
+                    histWriter(
+                        ckpt_series,
+                        OpenPMDWriteParams{
+                            restartDirectory + std::string("/binningOpenPMD/"),
+                            binningData.binnerOutputName,
+                            binningData.openPMDInfix,
+                            binningData.openPMDExtension,
+                            binningData.jsonCfg},
+                        std::move(hReducedBuffer),
+                        binningData,
+                        binningData.depositionData.units,
+                        currentStep,
+                        true,
+                        accumulateCounter);
+                }
+            }
+
+            void restart(uint32_t restartStep, const std::string restartDirectory) override
+            {
+                // retore to master or restore equal values to all MPI ranks or restore only on dump,
+                // bool wasRestarted, and read from file and add to buffer
+
+                if(isMain)
+                {
+                    // open file
+                    auto const& extension = binningData.openPMDExtension;
+                    std::ostringstream filename;
+                    filename << restartDirectory << "/binningOpenPMD/" << binningData.binnerOutputName;
+                    if(auto& infix = binningData.openPMDInfix; !infix.empty())
+                    {
+                        if(*infix.begin() != '_')
+                        {
+                            filename << '_';
+                        }
+                        if(*infix.rbegin() == '.')
+                        {
+                            filename << infix.substr(0, infix.size() - 1);
+                        }
+                        else
+                        {
+                            filename << infix;
+                        }
+                    }
+                    if(*extension.begin() == '.')
+                    {
+                        filename << extension;
+                    }
+                    else
+                    {
+                        filename << '.' << extension;
+                    }
+
+                    auto openPMDdataFile = ::openPMD::Series(filename.str(), ::openPMD::Access::READ_ONLY);
+                    // restore accumulate counter
+                    accumulateCounter
+                        = openPMDdataFile.iterations[restartStep].getAttribute("accCounter").get<uint32_t>();
+                    // restore hostBuffer
+                    ::openPMD::MeshRecordComponent dataset
+                        = openPMDdataFile.iterations[restartStep]
+                              .meshes["Binning"][::openPMD::RecordComponent::SCALAR];
+                    ::openPMD::Extent extent = dataset.getExtent();
+                    ::openPMD::Offset offset(extent.size(), 0);
+                    dataset.loadChunk(
+                        std::shared_ptr<float_X>{histBuffer->getHostBuffer().data(), [](auto const*) {}},
+                        offset,
+                        extent);
+                    openPMDdataFile.flush();
+                    openPMDdataFile.iterations[restartStep].close();
+
+                    // @todo divide histBuffer by gc.getGlobalSize and call from all ranks
+
+                    // transfer restored data to device so that it is not overwritten
+                    this->histBuffer->hostToDevice();
+                }
             }
 
         private:
@@ -288,8 +412,6 @@ namespace picongpu
                 auto globalOffset = Environment<SIMDIM>::get().SubGrid().getGlobalDomain().offset;
                 auto localOffset = Environment<SIMDIM>::get().SubGrid().getLocalDomain().offset;
 
-                auto workerCfg = pmacc::lockstep::makeWorkerCfg<Species::FrameType::frameSize>();
-
                 auto axisKernels = tupleMap(binningData.axisTuple, [&](auto axis) { return axis.getAxisKernel(); });
 
                 using TAxisTuple = decltype(axisKernels);
@@ -308,8 +430,12 @@ namespace picongpu
                     currentStep,
                     binningData.axisExtentsND);
 
-                PMACC_LOCKSTEP_KERNEL(functorBlock, workerCfg)
-                (mapper.getGridDim())(mapper);
+                PMACC_LOCKSTEP_KERNEL(functorBlock).config(mapper.getGridDim(), particlesBox)(mapper);
+            }
+
+            void pluginLoad() override
+            {
+                Environment<>::get().PluginConnector().setNotificationPeriod(this, binningData.notifyPeriod);
             }
         };
 

@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
+#include "pmacc/dimensions/DataSpace.hpp"
 #include "pmacc/particles/Identifier.hpp"
 #include "pmacc/particles/frame_types.hpp"
 #include "pmacc/particles/memory/frames/NullFrame.hpp"
@@ -66,8 +66,7 @@ namespace pmacc
             HDINLINE bool operator()(T_Particle const& particle)
             {
                 DataSpace<dim> localCellIdx
-                    = DataSpaceOperations<dim>::template map<typename T_Particle::SuperCellSize>(
-                        (uint32_t) (particle[localCellIdx_]));
+                    = math::mapToND(T_Particle::SuperCellSize::toRT(), static_cast<int>(particle[localCellIdx_]));
                 DataSpace<dim> pos = this->superCellIdx + localCellIdx;
                 bool result = true;
                 for(uint32_t d = 0; d < dim; ++d)

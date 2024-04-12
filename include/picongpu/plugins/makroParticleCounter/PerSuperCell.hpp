@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -51,8 +51,7 @@ namespace picongpu
         template<typename ParBox, typename CounterBox, typename Mapping, typename T_Worker>
         DINLINE void operator()(T_Worker const& worker, ParBox parBox, CounterBox counterBox, Mapping mapper) const
         {
-            const DataSpace<simDim> superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            const DataSpace<simDim> superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
             /* counterBox has no guarding supercells*/
             const DataSpace<simDim> superCellIdxNoGuard = superCellIdx - mapper.getGuardingSuperCells();
 
@@ -68,7 +67,7 @@ namespace picongpu
             forEachParticle(
                 [&counterValue](auto const& lockstepWorker, auto& /*particle*/)
                 {
-                    cupla::atomicAdd(
+                    alpaka::atomicAdd(
                         lockstepWorker.getAcc(),
                         &counterValue,
                         static_cast<uint64_cu>(1LU),
@@ -205,12 +204,11 @@ namespace picongpu
             using SuperCellSize = MappingDesc::SuperCellSize;
             auto const mapper = makeAreaMapper<AREA>(*cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
-            PMACC_LOCKSTEP_KERNEL(CountMakroParticle{}, workerCfg)
-            (mapper.getGridDim())(
-                particles->getDeviceParticlesBox(),
-                localResult->getDeviceBuffer().getDataBox(),
-                mapper);
+            PMACC_LOCKSTEP_KERNEL(CountMakroParticle{})
+                .config(mapper.getGridDim(), *particles)(
+                    particles->getDeviceParticlesBox(),
+                    localResult->getDeviceBuffer().getDataBox(),
+                    mapper);
 
             localResult->deviceToHost();
 
@@ -234,7 +232,7 @@ namespace picongpu
                 openPmdLocalDomainExtent[simDim - d - 1] = localDomainSize[d];
             }
 
-            size_t* ptr = localResult->getHostBuffer().getPointer();
+            size_t* ptr = localResult->getHostBuffer().data();
 
             // avoid deadlock between not finished pmacc tasks and collective or blocking MPI calls in openPMD
             eventSystem::getTransactionEvent().waitForFinished();

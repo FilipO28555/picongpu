@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -72,17 +72,17 @@ namespace pmacc
                 {
                     if(Environment<>::get().isMpiDirectEnabled())
                     {
-                        exchange->getDeviceDoubleBuffer().setCurrentSize(newBufferSize);
+                        exchange->getDeviceDoubleBuffer().setSize(newBufferSize);
                     }
                     else
                     {
-                        exchange->getHostBuffer().setCurrentSize(newBufferSize);
-                        Environment<>::get().Factory().createTaskCopyHostToDevice(
+                        exchange->getHostBuffer().setSize(newBufferSize);
+                        Environment<>::get().Factory().createTaskCopy(
                             exchange->getHostBuffer(),
                             exchange->getDeviceDoubleBuffer());
                     }
 
-                    Environment<>::get().Factory().createTaskCopyDeviceToDevice(
+                    Environment<>::get().Factory().createTaskCopy(
                         exchange->getDeviceDoubleBuffer(),
                         exchange->getDeviceBuffer(),
                         this);
@@ -91,8 +91,8 @@ namespace pmacc
                 {
                     if(Environment<>::get().isMpiDirectEnabled())
                     {
-                        exchange->getDeviceBuffer().setCurrentSize(newBufferSize);
-                        /* We can not be notified from setCurrentSize() therefore
+                        exchange->getDeviceBuffer().setSize(newBufferSize);
+                        /* We can not be notified from setSize() therefore
                          * we need to wait that the current event is finished.
                          */
                         setSizeEvent = eventSystem::getTransactionEvent();
@@ -100,8 +100,8 @@ namespace pmacc
                     }
                     else
                     {
-                        exchange->getHostBuffer().setCurrentSize(newBufferSize);
-                        Environment<>::get().Factory().createTaskCopyHostToDevice(
+                        exchange->getHostBuffer().setSize(newBufferSize);
+                        Environment<>::get().Factory().createTaskCopy(
                             exchange->getHostBuffer(),
                             exchange->getDeviceBuffer(),
                             this);
@@ -148,8 +148,7 @@ namespace pmacc
                     executeIntern();
                 }
                 break;
-            case COPYHOST2DEVICE:
-            case COPYDEVICE2DEVICE:
+            case COPY:
                 state = Finish;
                 break;
             default:

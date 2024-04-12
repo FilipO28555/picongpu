@@ -39,7 +39,7 @@ In order to create an efficient simulation, PIConGPU compiles to **exactly** the
 This comes at a small cost: when **even one of those settings is changed, you need to recompile**.
 Nevertheless, wasting about 5 minutes compiling on a single node is nothing compared to the time you save *at scale*!
 
-All options that are less or non-critical for runtime performance, such as specific ranges observables in :ref:`plugins <usage-plugins>` or how many nodes shall be used, can be set in :ref:`run time configuration files (*.cfg) <usage-tbg>` and do not need a recompile when changed.
+All options that are less or non-critical for runtime performance, such as specific ranges, observables in :ref:`plugins <usage-plugins>` or how many nodes shall be used, can be set in :ref:`run time configuration files (*.cfg) <usage-tbg>` and do not need a recompile when changed.
 
 Files and Their Usage
 ---------------------
@@ -63,10 +63,3 @@ When setting up a simulation, it is recommended to adjust ``.param`` files in th
    param/extensions
    param/plugins
    param/misc
-
-Python Generator (Third party)
-------------------------------
-
-`PoGit <https://github.com/hightower8083/PoGit>`_ is a utility to generate a set of ``.param files`` and a ``.cfg`` file using a Pythonic API.
-PoGit is a third-party development and supports only a subset of PIConGPU compile- and run-time settings.
-However, the resulting output can serve as a basis to be edited as normal ``.param files``.

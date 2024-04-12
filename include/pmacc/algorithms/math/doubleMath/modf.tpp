@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -36,7 +36,7 @@ namespace pmacc
 
             HDINLINE double operator()(double value, double* intpart)
             {
-#if(CUPLA_DEVICE_COMPILE == 1) // we are on gpu
+#if(PMACC_DEVICE_COMPILE == 1) // we are on gpu
                 return ::modf(value, intpart);
 #else
                 return std::modf(value, intpart);

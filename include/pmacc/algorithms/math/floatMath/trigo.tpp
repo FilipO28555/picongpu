@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -40,8 +40,8 @@ namespace pmacc
             HDINLINE void operator()(float arg, float& sinValue, float& cosValue)
             {
 #if defined(_MSC_VER) && !defined(__CUDA_ARCH__)
-                sinValue = cupla::math::sin(arg);
-                cosValue = cupla::math::cos(arg);
+                sinValue = pmacc::math::sin(arg);
+                cosValue = pmacc::math::cos(arg);
 #else
                 ::sincosf(arg, &sinValue, &cosValue);
 #endif
@@ -55,10 +55,10 @@ namespace pmacc
 
             HDINLINE float operator()(const float& value)
             {
-                if(cupla::math::abs(value) < FLT_EPSILON)
+                if(pmacc::math::abs(value) < FLT_EPSILON)
                     return 1.0f;
                 else
-                    return cupla::math::sin(value) / value;
+                    return pmacc::math::sin(value) / value;
             }
         };
 

@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -26,11 +26,13 @@
 #include <pmacc/types.hpp>
 #include <picongpu/simulation_types.hpp>
 #include "pmacc_renamings.hpp"
+#include "picongpu/traits/GetMargin.hpp"
 
 
 namespace picongpu
 {
     using namespace pmacc;
+    using namespace picongpu::traits;
 }
 
 /* IMPORTANT we need to use #include <...> for local files
@@ -51,6 +53,7 @@ namespace picongpu
 // ##### load unitless
 #include <picongpu/_defaultUnitless.loader>
 #include <picongpu/extensionUnitless.loader>
+
 // load starter after user extensions and all params are loaded
 #include <picongpu/unitless/starter.unitless>
 

@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -33,7 +33,7 @@ namespace picongpu
         namespace radiation
         {
             //! Low pass filter on frequencies, the threshold depends on the Nyquist frequency
-            class NyquistLowPass : public One_minus_beta_times_n
+            class NyquistLowPass : public OneMinusBetaTimesN
             {
             public:
                 /** Calculates the filter threshold, only frequencies below it pass
@@ -45,7 +45,7 @@ namespace picongpu
                  **/
                 HDINLINE NyquistLowPass(const vector_64& n, const Particle& particle)
                 {
-                    auto const omegaNyquist = (PI - 0.01) / (DELTA_T * One_minus_beta_times_n()(n, particle));
+                    auto const omegaNyquist = (PI - 0.01) / (DELTA_T * OneMinusBetaTimesN()(n, particle));
                     threshold = static_cast<float_X>(omegaNyquist * radiationNyquist::NyquistFactor);
                 }
 

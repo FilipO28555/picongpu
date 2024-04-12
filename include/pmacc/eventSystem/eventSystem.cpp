@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -19,6 +19,8 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+#include "pmacc/eventSystem/eventSystem.hpp"
 
 #include "pmacc/eventSystem/Manager.hpp"
 #include "pmacc/eventSystem/transactions/TransactionManager.hpp"
@@ -53,10 +55,5 @@ namespace pmacc::eventSystem
     EventStream* getEventStream(ITask::TaskType op)
     {
         return TransactionManager::getInstance().getEventStream(op);
-    }
-
-    void waitForAllTasks()
-    {
-        Manager::getInstance().waitForAllTasks();
     }
 } // namespace pmacc::eventSystem

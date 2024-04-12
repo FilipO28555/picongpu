@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -23,9 +23,13 @@
 #include "picongpu/plugins/ISimulationPlugin.hpp"
 #include "picongpu/plugins/binning/BinningCreator.hpp"
 
+#include <boost/program_options.hpp>
+#include <boost/program_options/options_description.hpp>
+
 #include <cstdint>
 #include <memory>
-#include <variant>
+#include <string>
+#include <vector>
 
 namespace picongpu
 {
@@ -38,7 +42,8 @@ namespace picongpu
         {
         private:
             std::string pluginName;
-            std::vector<std::unique_ptr<INotify>> binnerVector;
+            std::vector<std::unique_ptr<IPlugin>> binnerVector;
+            MappingDesc* cellDescription;
 
         public:
             // constructor doesn't know command line arguments if any, use pluginLoad to finish initialization
@@ -63,34 +68,49 @@ namespace picongpu
              * Create the binners
              * Set mapping Description for the "dispatched" binners
              */
-            void setMappingDescription(MappingDesc* cellDescription) override
+            void setMappingDescription(MappingDesc* cellDesc) override
             {
-                /**
-                 * Create and register Binning Plugins
-                 */
-                BinningCreator binningCreator{binnerVector, cellDescription};
-                getBinning(binningCreator);
+                this->cellDescription = cellDesc;
             }
 
             void restart(uint32_t restartStep, const std::string restartDirectory) override
             {
                 /* restart from a checkpoint here
                  * will be called only once per simulation and before notify() */
+                for(auto&& binner : binnerVector)
+                {
+                    binner->restart(restartStep, restartDirectory);
+                }
             }
 
             void checkpoint(uint32_t currentStep, const std::string restartDirectory) override
             {
                 /* create a persistent checkpoint here
                  * will be called before notify() if both will be called for the same timestep */
+                for(auto&& binner : binnerVector)
+                {
+                    binner->checkpoint(currentStep, restartDirectory);
+                }
             }
 
             void notify(uint32_t currentStep) override
             {
             }
 
-        private:
+        protected:
             void pluginLoad() override
             {
+                /**
+                 * Create Binning Plugins
+                 */
+                BinningCreator binningCreator{binnerVector, cellDescription};
+                getBinning(binningCreator);
+
+                /** Register Binning Plugins for notification*/
+                for(auto&& binner : binnerVector)
+                {
+                    binner->load();
+                }
             }
         };
     } // namespace plugins::binning

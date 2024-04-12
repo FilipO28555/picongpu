@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -338,9 +338,10 @@ namespace picongpu
 
                     auto& updatedField = *dc.get<T_UpdatedField>(T_UpdatedField::getName());
 
-                    auto workerCfg = lockstep::makeWorkerCfg(BlockSize{});
-                    PMACC_LOCKSTEP_KERNEL(ApplyIncidentFieldKernel<BlockSize>{}, workerCfg)
-                    (gridBlocks)(functor, updatedField.getDeviceDataBox(), beginGridIdx, endGridIdx);
+                    PMACC_LOCKSTEP_KERNEL(ApplyIncidentFieldKernel<BlockSize>{})
+                        .config(
+                            gridBlocks,
+                            BlockSize{})(functor, updatedField.getDeviceDataBox(), beginGridIdx, endGridIdx);
                 }
 
                 /** Functor to update a field with the given incidentField normally to the given axis

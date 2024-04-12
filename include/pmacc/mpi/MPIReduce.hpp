@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -67,7 +67,7 @@ namespace pmacc
 
             /** defines if the result of the MPI operation is valid
              *
-             * The reduction method reduceMethods::Reduce is used.
+             * The reduction method reduceMethods::AllReduce is used.
              *
              * @return if result of operator() is valid
              */

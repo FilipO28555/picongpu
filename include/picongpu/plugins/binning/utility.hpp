@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -18,7 +18,11 @@
  */
 
 #pragma once
+
 #include <pmacc/memory/STLTuple.hpp>
+
+#include <tuple>
+#include <utility>
 
 namespace picongpu
 {
@@ -68,7 +72,7 @@ namespace picongpu
         }
 
         template<typename... Args>
-        auto createTuple(Args const&... args)
+        HDINLINE auto createTuple(Args const&... args)
         {
             return std::make_tuple(args...);
         }

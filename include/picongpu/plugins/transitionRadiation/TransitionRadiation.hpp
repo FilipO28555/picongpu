@@ -11,7 +11,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -33,7 +33,6 @@
 #include "picongpu/plugins/transitionRadiation/frequencies/LogFrequencies.hpp"
 
 #include <pmacc/dataManagement/DataConnector.hpp>
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/lockstep/lockstep.hpp>
 #include <pmacc/math/Complex.hpp>
 #include <pmacc/math/operation.hpp>
@@ -293,25 +292,25 @@ namespace picongpu
                     reduce(
                         pmacc::math::operation::Add(),
                         tmpITR.data(),
-                        incTransRad->getHostBuffer().getBasePointer(),
+                        incTransRad->getHostBuffer().data(),
                         elementsTransitionRadiation(),
                         mpi::reduceMethods::Reduce());
                     reduce(
                         pmacc::math::operation::Add(),
                         tmpCTRpara.data(),
-                        cohTransRadPara->getHostBuffer().getBasePointer(),
+                        cohTransRadPara->getHostBuffer().data(),
                         elementsTransitionRadiation(),
                         mpi::reduceMethods::Reduce());
                     reduce(
                         pmacc::math::operation::Add(),
                         tmpCTRperp.data(),
-                        cohTransRadPerp->getHostBuffer().getBasePointer(),
+                        cohTransRadPerp->getHostBuffer().data(),
                         elementsTransitionRadiation(),
                         mpi::reduceMethods::Reduce());
                     reduce(
                         pmacc::math::operation::Add(),
                         tmpNum.data(),
-                        numParticles->getHostBuffer().getBasePointer(),
+                        numParticles->getHostBuffer().data(),
                         elementsTransitionRadiation(),
                         mpi::reduceMethods::Reduce());
                 }
@@ -474,28 +473,26 @@ namespace picongpu
 
                     // Some funny things that make it possible for the kernel to calculate
                     // the absolute position of the particles
-                    DataSpace<simDim> localSize(cellDescription->getGridLayout().getDataSpaceWithoutGuarding());
+                    DataSpace<simDim> localSize(cellDescription->getGridLayout().sizeWithoutGuardND());
                     const uint32_t numSlides = MovingWindow::getInstance().getSlideCounter(currentStep);
                     const SubGrid<simDim>& subGrid = Environment<simDim>::get().SubGrid();
                     DataSpace<simDim> globalOffset(subGrid.getLocalDomain().offset);
                     globalOffset.y() += (localSize.y() * numSlides);
 
-                    auto workerCfg = lockstep::makeWorkerCfg<T_ParticlesType::FrameType::frameSize>();
                     // PIC-like kernel call of the radiation kernel
-                    PMACC_LOCKSTEP_KERNEL(KernelTransRadParticles{}, workerCfg)
-                    (gridDim_rad)(
-                        /*Pointer to particles memory on the device*/
-                        particles->getDeviceParticlesBox(),
-
-                        /*Pointer to memory of radiated amplitude on the device*/
-                        incTransRad->getDeviceBuffer().getDataBox(),
-                        cohTransRadPara->getDeviceBuffer().getDataBox(),
-                        cohTransRadPerp->getDeviceBuffer().getDataBox(),
-                        numParticles->getDeviceBuffer().getDataBox(),
-                        globalOffset,
-                        *cellDescription,
-                        freqFkt,
-                        subGrid.getGlobalDomain().size);
+                    PMACC_LOCKSTEP_KERNEL(KernelTransRadParticles{})
+                        .config(gridDim_rad, *particles)(
+                            /*Pointer to particles memory on the device*/
+                            particles->getDeviceParticlesBox(),
+                            /*Pointer to memory of radiated amplitude on the device*/
+                            incTransRad->getDeviceBuffer().getDataBox(),
+                            cohTransRadPara->getDeviceBuffer().getDataBox(),
+                            cohTransRadPerp->getDeviceBuffer().getDataBox(),
+                            numParticles->getDeviceBuffer().getDataBox(),
+                            globalOffset,
+                            *cellDescription,
+                            freqFkt,
+                            subGrid.getGlobalDomain().size);
                 }
             };
 

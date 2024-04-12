@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -37,10 +37,8 @@ namespace pmacc
     {
         ExchangeMapping<GUARD, MappingDesc> mapper(this->cellDescription, exchangeType);
 
-        auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
-
-        PMACC_LOCKSTEP_KERNEL(KernelDeleteParticles{}, workerCfg)
-        (mapper.getGridDim())(particlesBuffer->getDeviceParticleBox(), mapper);
+        PMACC_LOCKSTEP_KERNEL(KernelDeleteParticles{})
+            .config(mapper.getGridDim(), *particlesBuffer)(particlesBuffer->getDeviceParticleBox(), mapper);
     }
 
     template<typename T_ParticleDescription, class MappingDesc, typename T_DeviceHeap>
@@ -49,10 +47,8 @@ namespace pmacc
     {
         auto const mapper = makeAreaMapper<T_area>(this->cellDescription);
 
-        auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
-
-        PMACC_LOCKSTEP_KERNEL(KernelDeleteParticles{}, workerCfg)
-        (mapper.getGridDim())(particlesBuffer->getDeviceParticleBox(), mapper);
+        PMACC_LOCKSTEP_KERNEL(KernelDeleteParticles{})
+            .config(mapper.getGridDim(), *particlesBuffer)(particlesBuffer->getDeviceParticleBox(), mapper);
     }
 
     template<typename T_ParticleDescription, class MappingDesc, typename T_DeviceHeap>
@@ -69,15 +65,13 @@ namespace pmacc
         {
             ExchangeMapping<GUARD, MappingDesc> mapper(this->cellDescription, exchangeType);
 
-            particlesBuffer->getSendExchangeStack(exchangeType).setCurrentSize(0);
+            particlesBuffer->getSendExchangeStack(exchangeType).setSize(0);
 
-            auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
-
-            PMACC_LOCKSTEP_KERNEL(KernelCopyGuardToExchange{}, workerCfg)
-            (mapper.getGridDim())(
-                particlesBuffer->getDeviceParticleBox(),
-                particlesBuffer->getSendExchangeStack(exchangeType).getDeviceExchangePushDataBox(),
-                mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelCopyGuardToExchange{})
+                .config(mapper.getGridDim(), *particlesBuffer)(
+                    particlesBuffer->getDeviceParticleBox(),
+                    particlesBuffer->getSendExchangeStack(exchangeType).getDeviceExchangePushDataBox(),
+                    mapper);
         }
     }
 
@@ -96,13 +90,11 @@ namespace pmacc
             {
                 ExchangeMapping<GUARD, MappingDesc> mapper(this->cellDescription, exchangeType);
 
-                auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
-
-                PMACC_LOCKSTEP_KERNEL(KernelInsertParticles{}, workerCfg)
-                (numParticles)(
-                    particlesBuffer->getDeviceParticleBox(),
-                    particlesBuffer->getReceiveExchangeStack(exchangeType).getDeviceExchangePopDataBox(),
-                    mapper);
+                PMACC_LOCKSTEP_KERNEL(KernelInsertParticles{})
+                    .config(numParticles, *particlesBuffer)(
+                        particlesBuffer->getDeviceParticleBox(),
+                        particlesBuffer->getReceiveExchangeStack(exchangeType).getDeviceExchangePopDataBox(),
+                        mapper);
             }
         }
     }

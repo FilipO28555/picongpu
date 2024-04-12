@@ -12,7 +12,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -753,8 +753,7 @@ namespace picongpu
                 constexpr uint16_t numSubDivisions = 2000u;
                 constexpr float_X timePerAtomicPhyiscsSubStep = picongpu::SI::DELTA_T_SI / numSubDivisions;
 
-                pmacc::DataSpace<simDim> const supercellIdx(
-                    mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+                pmacc::DataSpace<simDim> const supercellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
                 constexpr uint32_t frameSize = T_IonBox::frameSize;
 

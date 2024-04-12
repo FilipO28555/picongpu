@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -209,17 +209,17 @@ namespace picongpu
 
         auto const chargeDeviation = [] ALPAKA_FN_ACC(auto const& worker, auto mapper, auto rohBox, auto fieldEBox)
         {
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
             DataSpace<simDim> const supercellCellIdx = superCellIdx * SuperCellSize::toRT();
             constexpr uint32_t cellsPerSupercell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
             lockstep::makeForEach<cellsPerSupercell>(worker)(
-                [&](uint32_t const linearIdx)
+                [&](int32_t const linearIdx)
                 {
                     // cell index within the superCell
                     DataSpace<simDim> const inSupercellCellIdx
-                        = DataSpaceOperations<simDim>::template map<SuperCellSize>(linearIdx);
+                        = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
+
                     auto globalCellIdx = supercellCellIdx + inSupercellCellIdx;
 
                     auto div = picongpu::detail::Div<simDim, typename FieldTmp::ValueType>{};
@@ -231,22 +231,22 @@ namespace picongpu
         };
 
         auto const mapper = makeAreaMapper<CORE + BORDER>(*this->cellDescription);
-        auto const workerCfg = lockstep::makeWorkerCfg(SuperCellSize{});
-        PMACC_LOCKSTEP_KERNEL(chargeDeviation, workerCfg)
-        (mapper.getGridDim())(
-            mapper,
-            fieldTmp->getGridBuffer().getDeviceBuffer().getDataBox(),
-            fieldE->getGridBuffer().getDeviceBuffer().getDataBox());
+
+        PMACC_LOCKSTEP_KERNEL(chargeDeviation)
+            .config(mapper.getGridDim(), SuperCellSize{})(
+                mapper,
+                fieldTmp->getGridBuffer().getDeviceBuffer().getDataBox(),
+                fieldE->getGridBuffer().getDeviceBuffer().getDataBox());
 
         // find global max error
         auto memLayoutRoh = fieldTmp->getGridLayout();
-        int localSizeRoh = memLayoutRoh.getDataSpaceWithoutGuarding().productOfComponents();
+        int localSizeRoh = memLayoutRoh.sizeWithoutGuardND().productOfComponents();
 
         using D1Box = DataBoxDim1Access<typename FieldTmp::DataBoxType>;
         // ignore guards and operate on CORE+BORDER only
         D1Box d1access(
-            fieldTmp->getGridBuffer().getDeviceBuffer().getDataBox().shift(memLayoutRoh.getGuard()),
-            memLayoutRoh.getDataSpaceWithoutGuarding());
+            fieldTmp->getGridBuffer().getDeviceBuffer().getDataBox().shift(memLayoutRoh.guardSizeND()),
+            memLayoutRoh.sizeWithoutGuardND());
 
         auto maxChargeDiff = (*globalReduce)(pmacc::math::operation::Max(), d1access, localSizeRoh, mpiReduceMethod);
 

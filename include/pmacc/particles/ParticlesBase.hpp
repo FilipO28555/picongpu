@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -83,10 +83,8 @@ namespace pmacc
             : SimulationFieldHelper<MappingDesc>(description)
             , particlesBuffer(nullptr)
         {
-            particlesBuffer = new BufferType(
-                deviceHeap,
-                description.getGridLayout().getDataSpace(),
-                MappingDesc::SuperCellSize::toRT());
+            particlesBuffer
+                = new BufferType(deviceHeap, description.getGridLayout().sizeND(), MappingDesc::SuperCellSize::toRT());
         }
 
         ~ParticlesBase() override
@@ -139,10 +137,8 @@ namespace pmacc
         {
             auto const mapper = mapperFactory(this->cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
-
-            PMACC_LOCKSTEP_KERNEL(KernelFillGaps{}, workerCfg)
-            (mapper.getGridDim())(particlesBuffer->getDeviceParticleBox(), mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelFillGaps{})
+                .config(mapper.getGridDim(), *particlesBuffer)(particlesBuffer->getDeviceParticleBox(), mapper);
         }
 
         /* fill gaps in a the complete simulation area (include GUARD)
@@ -227,12 +223,13 @@ namespace pmacc
             ParticlesBoxType pBox = particlesBuffer->getDeviceParticleBox();
             auto const numSupercellsWithGuards = particlesBuffer->getSuperCellsCount();
 
-            auto workerCfg = lockstep::makeWorkerCfg<FrameType::frameSize>();
             eventSystem::startTransaction(eventSystem::getTransactionEvent());
             do
             {
-                PMACC_LOCKSTEP_KERNEL(KernelShiftParticles{}, workerCfg)
-                (mapper.getGridDim())(pBox, mapper, numSupercellsWithGuards, onlyProcessMustShiftSupercells);
+                PMACC_LOCKSTEP_KERNEL(KernelShiftParticles{})
+                    .config(
+                        mapper.getGridDim(),
+                        pBox)(pBox, mapper, numSupercellsWithGuards, onlyProcessMustShiftSupercells);
             } while(mapper.next());
 
             eventSystem::setTransactionEvent(eventSystem::endTransaction());

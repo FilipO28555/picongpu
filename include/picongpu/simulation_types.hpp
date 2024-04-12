@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -20,19 +20,17 @@
 
 #pragma once
 
-#include "picongpu/traits/GetDataBoxType.hpp"
-#include "picongpu/traits/GetMargin.hpp"
 #include "version.hpp"
 
 #include <pmacc/algorithms/PromoteType.hpp>
 #include <pmacc/algorithms/TypeCast.hpp>
 #include <pmacc/algorithms/math.hpp>
+#include <pmacc/math/math.hpp>
 #include <pmacc/meta/ForEach.hpp>
 #include <pmacc/traits/GetComponentsType.hpp>
 #include <pmacc/traits/GetStringProperties.hpp>
 #include <pmacc/traits/NumberOfExchanges.hpp>
 
-#include <cupla/device/math.hpp>
 
 namespace picongpu
 {
@@ -46,7 +44,7 @@ namespace picongpu
         using precisionType = double;
     }
 
-    namespace math = cupla::device::math;
+    namespace math = pmacc::math;
     /** g++ 9 creates compile issues when pulling definitions into picongpu namepsace via 'using namespace
      * pmacc::algorithms::precisionCast;' therefore we pull the class and function separate
      */
@@ -56,6 +54,5 @@ namespace picongpu
 
     using namespace pmacc::algorithms::promoteType;
     using namespace pmacc::traits;
-    using namespace picongpu::traits;
 
 } // namespace picongpu

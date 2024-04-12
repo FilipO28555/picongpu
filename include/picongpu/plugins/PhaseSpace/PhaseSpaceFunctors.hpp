@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -24,7 +24,6 @@
 
 #include <pmacc/lockstep.hpp>
 #include <pmacc/math/Vector.hpp>
-#include <pmacc/math/VectorOperations.hpp>
 #include <pmacc/math/operation.hpp>
 #include <pmacc/particles/algorithm/ForEach.hpp>
 
@@ -70,7 +69,7 @@ namespace picongpu
 
             /* cell id in this block */
             const int linearCellIdx = particle[localCellIdx_];
-            const pmacc::math::UInt32<simDim> cellIdx(pmacc::math::MapToPos<simDim>()(SuperCellSize{}, linearCellIdx));
+            const pmacc::math::UInt32<simDim> cellIdx(pmacc::math::mapToND(SuperCellSize::toRT(), linearCellIdx));
 
             const uint32_t r_bin = cellIdx[r_dir];
             const float_X weighting = particle[weighting_];
@@ -88,7 +87,7 @@ namespace picongpu
                 p_bin = num_pbins - 1;
 
             /** @todo take particle shape into account */
-            cupla::atomicAdd(
+            alpaka::atomicAdd(
                 worker.getAcc(),
                 &(sharedMemHist(DataSpace<2>(p_bin, r_bin))),
                 particleChargeDensity,
@@ -154,8 +153,7 @@ namespace picongpu
         template<typename T_Worker, typename T_Mapping>
         DINLINE void operator()(const T_Worker& worker, T_Mapping const& mapper) const
         {
-            const DataSpace<simDim> superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            const DataSpace<simDim> superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             /* create shared mem */
             constexpr int blockCellsInDir = SuperCellSize::template at<r_dir>::type::value;

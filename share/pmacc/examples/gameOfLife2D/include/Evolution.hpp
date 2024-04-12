@@ -9,7 +9,7 @@
  * (at your option) any later version.
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -22,7 +22,6 @@
 
 #include "types.hpp"
 
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/lockstep.hpp>
 #include <pmacc/lockstep/lockstep.hpp>
 #include <pmacc/mappings/kernel/AreaMapping.hpp>
@@ -73,7 +72,7 @@ namespace gol
                 using BlockArea = SuperCellDescription<SuperCellSize, math::CT::Int<1, 1>, math::CT::Int<1, 1>>;
                 auto cache = CachedBox::create<0, Type>(worker, BlockArea());
 
-                Space const block(mapper.getSuperCellIndex(Space(cupla::blockIdx(worker.getAcc()))));
+                Space const block(mapper.getSuperCellIndex(Space(worker.blockDomIdxND())));
                 Space const blockCell = block * T_Mapping::SuperCellSize::toRT();
 
                 constexpr uint32_t cellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
@@ -88,11 +87,10 @@ namespace gol
                 worker.sync();
 
                 lockstep::makeForEach<cellsPerSuperCell>(worker)(
-                    [&](uint32_t const linearIdx)
+                    [&](int32_t const linearIdx)
                     {
                         // cell index within the superCell
-                        DataSpace<DIM2> const cellIdx
-                            = DataSpaceOperations<DIM2>::template map<SuperCellSize>(linearIdx);
+                        DataSpace<DIM2> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
 
                         Type neighbors = 0;
                         for(uint32_t i = 1; i < 9; ++i)
@@ -141,13 +139,13 @@ namespace gol
                 constexpr uint32_t cellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
                 // get position in grid in units of SuperCells from blockID
-                Space const block(mapper.getSuperCellIndex(Space(cupla::blockIdx(worker.getAcc()))));
+                Space const block(mapper.getSuperCellIndex(Space(worker.blockDomIdxND())));
                 // convert position in unit of cells
                 Space const blockCell = block * T_Mapping::SuperCellSize::toRT();
 
-                uint32_t const globalUniqueId = DataSpaceOperations<DIM2>::map(
+                uint32_t const globalUniqueId = pmacc::math::linearize(
                     mapper.getGridSuperCells() * T_Mapping::SuperCellSize::toRT(),
-                    blockCell + DataSpaceOperations<DIM2>::template map<SuperCellSize>(worker.getWorkerIdx()));
+                    blockCell + pmacc::math::mapToND(SuperCellSize::toRT(), static_cast<int>(worker.workerIdx())));
 
                 // create a random number state and generator
                 using RngMethod = random::methods::XorMin<typename T_Worker::Acc>;
@@ -160,11 +158,10 @@ namespace gol
                 Random rng(&state);
 
                 lockstep::makeForEach<cellsPerSuperCell>(worker)(
-                    [&](uint32_t const linearIdx)
+                    [&](int32_t const linearIdx)
                     {
                         // cell index within the superCell
-                        DataSpace<DIM2> const cellIdx
-                            = DataSpaceOperations<DIM2>::template map<SuperCellSize>(linearIdx);
+                        DataSpace<DIM2> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
                         // write 1(white) if uniform random number 0<rng<1 is smaller than 'threshold'
                         buffWrite(blockCell + cellIdx) = static_cast<bool>(rng(worker) <= threshold);
                     });
@@ -195,18 +192,18 @@ namespace gol
             GridController<DIM2>& gc = Environment<DIM2>::get().GridController();
             uint32_t seed = gc.getGlobalSize() + gc.getGlobalRank();
 
-            auto workerCfg = lockstep::makeWorkerCfg(typename T_MappingDesc::SuperCellSize{});
-            PMACC_LOCKSTEP_KERNEL(kernel::RandomInit{}, workerCfg)
-            (mapper.getGridDim())(writeBox, seed, fraction, mapper);
+            PMACC_LOCKSTEP_KERNEL(kernel::RandomInit{})
+                .config(
+                    mapper.getGridDim(),
+                    typename T_MappingDesc::SuperCellSize{})(writeBox, seed, fraction, mapper);
         }
 
         template<uint32_t Area, typename DBox>
         void run(DBox const& readBox, DBox const& writeBox)
         {
             AreaMapping<Area, T_MappingDesc> mapper(*mapping);
-            auto workerCfg = lockstep::makeWorkerCfg(typename T_MappingDesc::SuperCellSize{});
-            PMACC_LOCKSTEP_KERNEL(kernel::Evolution{}, workerCfg)
-            (mapper.getGridDim())(readBox, writeBox, rule, mapper);
+            PMACC_LOCKSTEP_KERNEL(kernel::Evolution{})
+                .config(mapper.getGridDim(), typename T_MappingDesc::SuperCellSize{})(readBox, writeBox, rule, mapper);
         }
     };
 

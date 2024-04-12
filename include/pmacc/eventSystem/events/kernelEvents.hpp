@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -37,6 +37,18 @@ namespace pmacc::exec
 {
     namespace detail
     {
+        template<typename T, typename T_Sfinae = void>
+        struct GetDim
+        {
+            static constexpr uint32_t dim = T::dim;
+        };
+
+        template<typename T>
+        struct GetDim<T, std::enable_if_t<std::is_integral_v<T>>>
+        {
+            static constexpr uint32_t dim = 1;
+        };
+
         /** Wraps a user kernel functor to prepare the execution on the device.
          *
          * This objects contains the kernel functor, kernel meta information.
@@ -60,8 +72,8 @@ namespace pmacc::exec
 
             /** Apply grid and block extents and optionally dynamic shared memory to the wrapped functor.
              *
-             * @tparam T_VectorGrid type which defines the grid extents (type must be cast-able to cupla dim3)
-             * @tparam T_VectorBlock type which defines the block extents (type must be cast-able to cupla dim3)
+             * @tparam T_VectorGrid type which defines the grid extents
+             * @tparam T_VectorBlock type which defines the block extents
              *
              * @param gridExtent grid extent configuration for the kernel
              * @param blockExtent block extent configuration for the kernel
@@ -72,7 +84,7 @@ namespace pmacc::exec
              */
             template<typename T_VectorGrid, typename T_VectorBlock>
             HINLINE auto operator()(T_VectorGrid const& gridExtent, T_VectorBlock const& blockExtent) const
-                -> KernelLauncher<T_KernelFunctor>;
+                -> KernelLauncher<T_KernelFunctor, GetDim<T_VectorGrid>::dim>;
 
             /**
              * @param sharedMemByte dynamic shared memory used by the kernel (in byte)
@@ -81,7 +93,8 @@ namespace pmacc::exec
             HINLINE auto operator()(
                 T_VectorGrid const& gridExtent,
                 T_VectorBlock const& blockExtent,
-                size_t const sharedMemByte) const -> KernelLauncher<KernelWithDynSharedMem<T_KernelFunctor>>;
+                size_t const sharedMemByte) const
+                -> KernelLauncher<KernelWithDynSharedMem<T_KernelFunctor>, GetDim<T_VectorGrid>::dim>;
             /**@}*/
         };
     } // namespace detail

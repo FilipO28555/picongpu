@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -44,17 +44,17 @@ namespace pmacc
             if(exchange->hasDeviceDoubleBuffer())
             {
                 if(Environment<>::get().isMpiDirectEnabled())
-                    Environment<>::get().Factory().createTaskCopyDeviceToDevice(
+                    Environment<>::get().Factory().createTaskCopy(
                         exchange->getDeviceBuffer(),
                         exchange->getDeviceDoubleBuffer(),
                         this);
                 else
                 {
-                    Environment<>::get().Factory().createTaskCopyDeviceToDevice(
+                    Environment<>::get().Factory().createTaskCopy(
                         exchange->getDeviceBuffer(),
                         exchange->getDeviceDoubleBuffer());
 
-                    Environment<>::get().Factory().createTaskCopyDeviceToHost(
+                    Environment<>::get().Factory().createTaskCopy(
                         exchange->getDeviceDoubleBuffer(),
                         exchange->getHostBuffer(),
                         this);
@@ -71,7 +71,7 @@ namespace pmacc
                     state = ReadyForMPISend;
                 }
                 else
-                    Environment<>::get().Factory().createTaskCopyDeviceToHost(
+                    Environment<>::get().Factory().createTaskCopy(
                         exchange->getDeviceBuffer(),
                         exchange->getHostBuffer(),
                         this);
@@ -108,7 +108,7 @@ namespace pmacc
 
         void event(id_t, EventType type, IEventData*) override
         {
-            if(type == COPYDEVICE2HOST || type == COPYDEVICE2DEVICE)
+            if(type == COPY)
             {
                 state = ReadyForMPISend;
                 executeIntern();

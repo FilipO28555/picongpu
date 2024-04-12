@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -34,13 +34,13 @@
 
 namespace pmacc
 {
-    /** Manages a pool of cuplaEvent_t objects and gives access to them. */
+    /** Manages a pool of EventType objects and gives access to them. */
     class EventPool
     {
     public:
-        /** Returns a free cupla event
+        /** Returns a free alpaka event
          *
-         * @return free cupla event
+         * @return free alpaka event
          */
         CudaEventHandle pop()
         {
@@ -70,9 +70,9 @@ namespace pmacc
                 freeEvents.push_back(CudaEventHandle(ev));
         }
 
-        /** create and add cupla events to the pool
+        /** create and add an alpaka events to the pool
          *
-         * @param count number of cupla events to add
+         * @param count number of alpaka events to add
          */
         void createEvents(size_t count = 1u)
         {
@@ -84,9 +84,9 @@ namespace pmacc
             }
         }
 
-        /** Returns the number of cupla events in the pool.
+        /** Returns the number of alpaka events in the pool.
          *
-         * @return number of cupla events
+         * @return number of alpaka events
          */
         size_t getEventsCount()
         {
@@ -107,7 +107,7 @@ namespace pmacc
 
         /** Destructor
          *
-         * destroys all cupla events in the pool
+         * destroys all alpaka events in the pool
          */
         ~EventPool()
         {

@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -29,7 +29,6 @@
 
 #include <pmacc/dataManagement/DataConnector.hpp>
 #include <pmacc/device/Reduce.hpp>
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/math/operation.hpp>
 #include <pmacc/memory/boxes/DataBoxDim1Access.hpp>
 #include <pmacc/memory/boxes/DataBoxUnaryTransform.hpp>
@@ -248,8 +247,8 @@ namespace picongpu
             using D1Box = DataBoxDim1Access<Box64bit>;
 
             /* reduce field E*/
-            DataSpace<simDim> fieldSize = field->getGridLayout().getDataSpaceWithoutGuarding();
-            DataSpace<simDim> fieldGuard = field->getGridLayout().getGuard();
+            DataSpace<simDim> fieldSize = field->getGridLayout().sizeWithoutGuardND();
+            DataSpace<simDim> fieldGuard = field->getGridLayout().guardSizeND();
 
             TransformedBox fieldTransform(field->getDeviceDataBox().shift(fieldGuard));
             Box64bit field64bit(fieldTransform);

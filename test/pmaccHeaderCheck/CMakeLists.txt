@@ -12,8 +12,7 @@ cmake_minimum_required(VERSION 3.18)
 project(PMaccHeaderTest)
 
 # Add common functions from alpaka.
-# Always use the alpaka files shipped with PIConGPU/cupla from the thirdParty directory.
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../thirdParty/cupla/alpaka/cmake/common.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../thirdParty/alpaka/cmake/common.cmake)
 
 ################################################################################
 # Directory of this file.
@@ -76,7 +75,7 @@ append_recursive_files_add_to_src_group("${_GENERATED_SOURCE_DIR}" "${_GENERATED
 list(APPEND _FILES_SOURCE "src/main.cpp")
 
 # Always add all files to the target executable build call to add them to the build project.
-cupla_add_executable(
+alpaka_add_executable(
         ${_TARGET_NAME}
         ${_FILES_SOURCE})
 

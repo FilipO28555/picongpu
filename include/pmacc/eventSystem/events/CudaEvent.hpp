@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -21,31 +21,30 @@
 
 #pragma once
 
+#include "pmacc/alpakaHelper/acc.hpp"
 #include "pmacc/assert.hpp"
 #include "pmacc/types.hpp"
 
 
 namespace pmacc
 {
-    /** Wrapper for cuplaEvent_t
+    /** Wrapper for AlpakaEventType
      *
      * This class follows the RAII rules
      */
     class CudaEvent
     {
     private:
-        /** native cupla event */
-        cuplaEvent_t event;
-        /** native cupla stream where the event is recorded
+        /** native alpaka event */
+        AlpakaEventType event;
+        /** native alpaka queue where the event is recorded
          *
          *  only valid if isRecorded is true
          */
-        cuplaStream_t stream;
-        /** state if event is recorded */
-        bool isRecorded{false};
+        std::optional<AccStream> stream;
         /** state if a recorded event is finished
          *
-         * avoid cupla driver calls after `isFinished()` returns the first time true
+         * avoids that alpaka calls backend API methods after `isFinished()` returns the first time true
          */
         bool finished{true};
 
@@ -56,7 +55,7 @@ namespace pmacc
     public:
         /** Constructor
          *
-         * if called before the cupla device is initialized the behavior is undefined
+         * if called before the alpaka device is initialized the behavior is undefined
          */
         CudaEvent();
 
@@ -69,23 +68,23 @@ namespace pmacc
         /** free a registered handle */
         void releaseHandle();
 
-        /** get native cuplaEvent_t object
+        /** get native AlpakaEventType object
          *
-         * @return native cupla event
+         * @return native alpaka event
          */
-        cuplaEvent_t operator*() const
+        AlpakaEventType operator*() const
         {
             return event;
         }
 
         /** get stream in which this event is recorded
          *
-         * @return native cupla stream
+         * @return native alpaka queue
          */
-        cuplaStream_t getStream() const
+        AccStream getStream() const
         {
-            assert(isRecorded);
-            return stream;
+            assert(this->stream.has_value());
+            return *stream;
         }
 
         /** check whether the event is finished
@@ -96,8 +95,8 @@ namespace pmacc
 
         /** record event in a device stream
          *
-         * @param stream native cupla stream
+         * @param stream native alpaka queue
          */
-        void recordEvent(cuplaStream_t stream);
+        void recordEvent(AccStream const& stream);
     };
 } // namespace pmacc

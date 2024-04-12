@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -27,35 +27,31 @@
 
 namespace pmacc
 {
-    /**
-     * Wrapper for a single cupla stream.
-     * Allows recording cupla events on the stream.
+    /** Wrapper for a single alpaka queue.
+     *
+     * Allows recording alpaka events on the queue.
      */
     class EventStream
     {
     public:
-        /**
-         * Constructor.
-         * Creates the cuplaStream_t object.
-         */
         EventStream();
 
-        /**
-         * Destructor.
+        /** Destructor.
+         *
          * Waits for the stream to finish and destroys it.
          */
         virtual ~EventStream();
 
-        /**
-         * Returns the cuplaStream_t object associated with this EventStream.
-         * @return the internal cupla stream object
+        /** Returns the alpaka queue object associated with this EventStream.
+         *
+         * @return the internal alpaka queue object
          */
-        cuplaStream_t getCudaStream() const;
+        AccStream getCudaStream() const;
 
         void waitOn(const CudaEventHandle& ev);
 
     private:
-        cuplaStream_t stream = nullptr;
+        AccStream stream;
     };
 
 } // namespace pmacc

@@ -6,7 +6,7 @@
 
 .. note::
 
-   If you are a scientific user at a supercomputing facility we might have already prepared a software setup for you.
+   If you are a scientific user at a super computing facility we might have already prepared a software setup for you.
    See the :ref:`following chapter <install-profile>` if you can skip this step fully or in part by loading existing modules on those systems.
 
 Dependencies
@@ -44,8 +44,8 @@ Compiler
   - if the installed version of **gcc** is too new, `compile an older gcc <https://gist.github.com/slizzered/a9dc4e13cb1c7fffec53>`_
 - *Spack:*
 
-  - ``spack install gcc@11.3.0``
-  - make it the default in your `packages.yaml <http://spack.readthedocs.io/en/latest/getting_started.html#compiler-configuration>`_ or *suffix* `all following <http://spack.readthedocs.io/en/latest/features.html#simple-package-installation>`_ ``spack install`` commands with a *space* and ``%gcc@8.5.0``
+  - ``spack install gcc@12.2.0``
+  - make it the default in your `packages.yaml <http://spack.readthedocs.io/en/latest/getting_started.html#compiler-configuration>`_ or *suffix* `all following <http://spack.readthedocs.io/en/latest/features.html#simple-package-installation>`_ ``spack install`` commands with a *space* and ``%gcc@12.2.0``
 
 CMake
 """""
@@ -74,7 +74,7 @@ Boost
 - 1.74.0+ (``program_options``, ``atomic`` and header-only libs)
 - *Debian/Ubuntu:* ``sudo apt-get install libboost-program-options-dev libboost-atomic-dev``
 - *Arch Linux:* ``sudo pacman --sync boost``
-- *Spack:* ``spack install boost``
+- *Spack:* ``spack install boost +program_options +atomic``
 - *from source:*
 
   - ``mkdir -p ~/src ~/lib``
@@ -103,13 +103,9 @@ rsync
 - *Arch Linux:* ``sudo pacman --sync rsync``
 - *Spack:* ``spack install rsync``
 
-alpaka 1.0.X-dev
+alpaka 1.1.X
 """"""""""""""""
 - `alpaka <https://github.com/alpaka-group/alpaka>`_ is included in the PIConGPU source code
-
-cupla 0.5.X-dev
-"""""""""""""""
-- `cupla <https://github.com/alpaka-group/cupla>`_ is included in the PIConGPU source code
 
 mallocMC 2.6.0crp-dev
 """""""""""""""""""""
@@ -196,7 +192,7 @@ pngwriter
 openPMD API
 """""""""""
 - optional, but strongly recommended as most PIConGPU output requires it
-- 0.14.3+
+- 0.15.0+
 - *Spack*: ``spack install openpmd-api``
 - For usage in PIConGPU, the openPMD API must have been built either with support for ADIOS2 or HDF5 (or both).
   When building the openPMD API from source (described below), these dependencies must be built and installed first.
@@ -208,7 +204,7 @@ openPMD API
 - *from source:*
 
   - ``mkdir -p ~/src ~/lib``
-  - ``git clone -b 0.14.4 https://github.com/openPMD/openPMD-api.git ~/src/openPMD-api``
+  - ``git clone -b 0.15.0 https://github.com/openPMD/openPMD-api.git ~/src/openPMD-api``
   - ``cd ~/src/openPMD-api``
   - ``mkdir build && cd build``
   - ``cmake .. -DopenPMD_USE_MPI=ON -DCMAKE_INSTALL_PREFIX=~/lib/openPMD-api``

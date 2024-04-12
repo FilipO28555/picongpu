@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,9 +23,13 @@
 #pragma once
 
 #include "pmacc/Environment.hpp"
+#include "pmacc/alpakaHelper/Device.hpp"
+#include "pmacc/alpakaHelper/acc.hpp"
 #include "pmacc/attribute/FunctionSpecifier.hpp"
 #include "pmacc/communication/manager_common.hpp"
 #include "pmacc/types.hpp"
+
+#include <stdexcept>
 
 
 #if !defined(ALPAKA_API_PREFIX)
@@ -240,69 +244,41 @@ namespace pmacc
             {
                 eventSystem::waitForAllTasks();
                 // Required by scorep for flushing the buffers
-                cuplaDeviceSynchronize();
+                alpaka::wait(manager::Device<ComputeDevice>::get().current());
                 m_isMpiInitialized = false;
-                /*
-                 * When using the combination of MPI_Comm_Accept() and MPI_Open_Port() (as is done by the MPI-based
-                 * implementation of the ADIOS2 SST engine), the current (2023-01-06) Cray MPI implementation
-                 * on Crusher/Frontier will hang inside MPI_Finalize().
-                 * The workaround is to replace it with an MPI_Barrier().
-                 */
-                char const* env_value = std::getenv("PIC_WORKAROUND_CRAY_MPI_FINALIZE");
-                bool use_cray_workaround = false;
-                if(env_value)
-                {
-                    try
-                    {
-                        int env_value_int = std::stoi(env_value);
-                        use_cray_workaround = env_value_int != 0;
-                    }
-                    catch(std::invalid_argument const& e)
-                    {
-                        std::cerr
-                            << "Warning: PIC_WORKAROUND_CRAY_MPI_FINALIZE must have an integer value, received: '"
-                            << env_value << "'. Will ignore." << std::endl;
-                    }
-                }
                 /* Free the MPI context.
                  * The gpu context is freed by the `StreamController`, because
                  * MPI and CUDA are independent.
                  */
-                if(use_cray_workaround)
-                {
-                    MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
-                }
-                else
-                {
-                    MPI_CHECK(MPI_Finalize());
-                }
+                MPI_CHECK(MPI_Finalize());
             }
         }
 
         void EnvironmentContext::setDevice(int deviceNumber)
         {
-            int num_gpus = 0; // number of gpus
-            cuplaGetDeviceCount(&num_gpus);
+            int numAvailableDevices = manager::Device<ComputeDevice>::get().count();
+
 #if(BOOST_LANG_CUDA || BOOST_COMP_HIP)
-            //##ERROR handling
-            if(num_gpus < 1) // check if cupla device is found
+            // check if device is found
+            if(numAvailableDevices < 1)
             {
-                throw std::runtime_error("no CUDA capable devices detected");
+                throw std::runtime_error("no capable alpaka compute devices detected");
             }
 #endif
 
-            int maxTries = num_gpus;
+            int maxTries = numAvailableDevices;
             bool deviceSelectionSuccessful = false;
-
-            cuplaError rc;
 
             // search the first selectable device in the compute node
             for(int deviceOffset = 0; deviceOffset < maxTries; ++deviceOffset)
             {
-                /* Modulo 'num_gpus' avoids invalid device indices for systems where the environment variable
-                 * `CUDA_VISIBLE_DEVICES` is used to pre-select a device.
+                // true if an error happened, else false
+                bool errorOccured = false;
+
+                /* Modulo 'numAvailableDevices' avoids invalid device indices for systems where the environment
+                 * variable `CUDA_VISIBLE_DEVICES` is used to pre-select a device.
                  */
-                const int tryDeviceId = (deviceOffset + deviceNumber) % num_gpus;
+                const int tryDeviceId = (deviceOffset + deviceNumber) % numAvailableDevices;
 
                 log<ggLog::CUDA_RT>("Trying to allocate device %1%.") % tryDeviceId;
 
@@ -313,7 +289,9 @@ namespace pmacc
                 hipDeviceProp_t devProp;
 #    endif
 
-                CUDA_CHECK((cuplaError_t) ALPAKA_API_PREFIX(GetDeviceProperties)(&devProp, tryDeviceId));
+                auto err = ALPAKA_API_PREFIX(GetDeviceProperties)(&devProp, tryDeviceId);
+                if(err != ALPAKA_API_PREFIX(Success))
+                    throw std::runtime_error("Error reading device properties.");
 
                 /* If the cuda gpu compute mode is 'default'
                  * (https://docs.nvidia.com/cuda/cuda-c-programming-guide/#compute-modes)
@@ -328,66 +306,51 @@ namespace pmacc
                 }
 #endif
 
-                rc = cuplaSetDevice(tryDeviceId);
-
-                if(rc == cuplaSuccess)
+                try
                 {
-                    cuplaStream_t stream;
-                    /* \todo: Check if this workaround is needed
-                     *
-                     * - since NVIDIA change something in driver cuplaSetDevice never
-                     * return an error if another process already use the selected
-                     * device if gpu compute mode is set "process exclusive"
-                     * - create a dummy stream to check if the device is already used by
-                     * an other process.
-                     * - cuplaStreamCreate fails if gpu is already in use
+                    manager::Device<ComputeDevice>::get().device(tryDeviceId);
+                }
+                catch(const std::system_error& e)
+                {
+                    errorOccured = true;
+                }
+
+                if(!errorOccured)
+                {
+                    /* Create a dummy stream to check if the device is already used by another process. This could
+                     * happen on NVIDIA devices. alpaka is performing the same check during the device selection but
+                     * not for all device types. This is a safety check if alpaka is not performing this check.
                      */
-                    rc = cuplaStreamCreate(&stream);
+                    try
+                    {
+                        auto testStream = AccStream(manager::Device<ComputeDevice>::get().current());
+                    }
+                    catch(const std::system_error& e)
+                    {
+                        errorOccured = true;
+                    }
                 }
 
-                if(rc == cuplaSuccess)
+                if(!errorOccured)
                 {
-#if(BOOST_LANG_CUDA || BOOST_LANG_HIP)
-                    CUDA_CHECK((cuplaError_t) ALPAKA_API_PREFIX(GetDeviceProperties)(&devProp, tryDeviceId));
-                    log<ggLog::CUDA_RT>("Set device to %1%: %2%") % tryDeviceId % devProp.name;
-                    if(ALPAKA_API_PREFIX(ErrorSetOnActiveProcess)
-                       == ALPAKA_API_PREFIX(SetDeviceFlags)(ALPAKA_API_PREFIX(DeviceScheduleSpin)))
-                    {
-                        cuplaGetLastError(); // reset all errors
-                        /* - because of cuplaStreamCreate was called cuplaSetDeviceFlags crashed
-                         * - to set the flags reset the device and set flags again
-                         */
-                        CUDA_CHECK(cuplaDeviceReset());
-                        CUDA_CHECK(
-                            (cuplaError_t) ALPAKA_API_PREFIX(SetDeviceFlags)(ALPAKA_API_PREFIX(DeviceScheduleSpin)));
-                    }
-#endif
-                    CUDA_CHECK(cuplaGetLastError());
                     deviceSelectionSuccessful = true;
+
                     break;
-                }
-                else if(
-                    rc == cuplaErrorDeviceAlreadyInUse
-#if(PMACC_CUDA_ENABLED == 1)
-                    || rc == (cuplaError) cudaErrorDevicesUnavailable
-#endif
-                )
-                {
-                    cuplaGetLastError(); // reset all errors
-                    log<ggLog::CUDA_RT>("Device %1% already in use, try next.") % tryDeviceId;
-                    continue;
                 }
                 else
                 {
-                    CUDA_CHECK(rc); /*error message*/
+                    log<ggLog::CUDA_RT>("Device %1% already in use, try next.") % tryDeviceId;
+                    continue;
                 }
             }
             if(!deviceSelectionSuccessful)
             {
-                std::cerr << "Failed to select one of the " << num_gpus << " devices." << std::endl;
+                std::cerr << "Failed to select one of the " << numAvailableDevices << " devices." << std::endl;
                 throw std::runtime_error("Compute device selection failed.");
             }
 
+            // initialize the default host device
+            manager::Device<HostDevice>::get().device();
             m_isDeviceSelected = true;
         }
 

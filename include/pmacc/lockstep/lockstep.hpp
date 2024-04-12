@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -21,9 +21,9 @@
 
 #pragma once
 
+#include "pmacc/lockstep/BlockCfg.hpp"
 #include "pmacc/lockstep/ForEach.hpp"
 #include "pmacc/lockstep/Idx.hpp"
 #include "pmacc/lockstep/Kernel.hpp"
 #include "pmacc/lockstep/Variable.hpp"
 #include "pmacc/lockstep/Worker.hpp"
-#include "pmacc/lockstep/WorkerCfg.hpp"

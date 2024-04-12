@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -51,8 +51,10 @@ namespace picongpu
             {
                 const float_64 unit_length = UNIT_LENGTH;
                 const float_X vacuum_y = float_X(ParamClass::vacuumCellsY) * cellSize.y();
-                const floatD_X center = precisionCast<float_X>(ParamClass::center_SI / unit_length);
-                const floatD_X sigma = precisionCast<float_X>(ParamClass::sigma_SI / unit_length);
+                constexpr auto centerSI = ParamClass::center_SI;
+                const floatD_X center = precisionCast<float_X>(centerSI / unit_length);
+                constexpr auto sigmaSI = ParamClass::sigma_SI;
+                const floatD_X sigma = precisionCast<float_X>(sigmaSI / unit_length);
 
                 const floatD_X globalCellPos(precisionCast<float_X>(totalCellOffset) * cellSize.shrink<simDim>());
 

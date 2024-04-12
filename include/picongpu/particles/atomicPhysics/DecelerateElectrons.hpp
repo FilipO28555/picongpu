@@ -12,7 +12,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -121,8 +121,7 @@ namespace picongpu
                 T_Histogram const& histogram,
                 T_AtomicDataBox atomicDataBox)
             {
-                pmacc::DataSpace<simDim> const superCellIdx(
-                    mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+                pmacc::DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
                 auto frame = electronBox.getLastFrame(superCellIdx);
                 auto particlesInSuperCell = electronBox.getSuperCell(superCellIdx).getSizeLastFrame();

@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -24,7 +24,6 @@
 #include "picongpu/particles/Particles.hpp"
 #include "picongpu/particles/traits/GetDensityRatio.hpp"
 
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/kernel/atomic.hpp>
 #include <pmacc/lockstep.hpp>
 #include <pmacc/memory/boxes/DataBox.hpp>
@@ -101,8 +100,9 @@ namespace picongpu
             T_Mapping mapper) const
         {
             constexpr int frameSize = T_ParBox::frameSize;
+#if 1
             constexpr uint32_t cellsPerSupercell = pmacc::math::CT::volume<SuperCellSize>::type::value;
-
+#endif
             using FramePtr = typename T_ParBox::FramePtr;
             using FrameType = typename T_ParBox::FrameType;
             using ParticleType = typename FrameType::ParticleType;
@@ -118,8 +118,7 @@ namespace picongpu
              */
             PMACC_SMEM(worker, destCounter, int);
 
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             /* offset of the superCell relative to the local domain [in supercells] (without guarding supercells) */
             DataSpace<simDim> const localSuperCellOffset(superCellIdx - mapper.getGuardingSuperCells());
@@ -137,10 +136,10 @@ namespace picongpu
 
             // initialize the position functor for each cell in the supercell
             auto positionFunctorCtx = forEachCellInSuperCell(
-                [&](uint32_t const idx, uint32_t& numParsPerCell)
+                [&](int32_t const idx, uint32_t& numParsPerCell)
                 {
                     /* cell index within the superCell */
-                    DataSpace<simDim> const cellIdx = DataSpaceOperations<simDim>::template map<SuperCellSize>(idx);
+                    DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), idx);
 
                     /* cell offset to the begin of the simulation */
                     DataSpace<simDim> const totalCellOffset
@@ -213,7 +212,7 @@ namespace picongpu
                         if(numParsPerCell > 0u)
                         {
                             destParticleIdx
-                                = cupla::atomicAdd(worker.getAcc(), &destCounter, 1, ::alpaka::hierarchy::Threads{});
+                                = alpaka::atomicAdd(worker.getAcc(), &destCounter, 1, ::alpaka::hierarchy::Threads{});
                             numParsPerCell--;
                         }
                         return destParticleIdx;

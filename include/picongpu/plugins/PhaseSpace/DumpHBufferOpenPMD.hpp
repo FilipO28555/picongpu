@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -95,7 +95,7 @@ namespace picongpu
                 softwareVersion << "-" << PICONGPU_VERSION_LABEL;
             series.setSoftware(software, softwareVersion.str());
 
-            auto bufferExtents = hBuffer.getDataSpace();
+            auto bufferExtents = hBuffer.capacityND();
 
             /** calculate local and global size of the phase space ***********/
             const uint32_t numSlides = MovingWindow::getInstance().getSlideCounter(currentStep);
@@ -140,7 +140,7 @@ namespace picongpu
                 globalExtentAsString << "[" << globalPhaseSpace_extent[0] << ", " << globalPhaseSpace_extent[1] << "]";
                 log<picLog::INPUT_OUTPUT>(
                     "Dump pointer %1% to %2% at offset %3% with size %4% for total size %5% for rank %6% / %7%")
-                    % (hBuffer.getBasePointer()) % dataSetName.str() % offsetAsString.str() % localExtentAsString.str()
+                    % (hBuffer.data()) % dataSetName.str() % offsetAsString.str() % localExtentAsString.str()
                     % globalExtentAsString.str() % rank % size;
             }
 
@@ -150,7 +150,7 @@ namespace picongpu
             ::openPMD::MeshRecordComponent dataset = mesh[::openPMD::RecordComponent::SCALAR];
 
             dataset.resetDataset({::openPMD::determineDatatype<Type>(), globalPhaseSpace_extent});
-            std::shared_ptr<Type> data(hBuffer.getBasePointer(), [](auto const&) {});
+            std::shared_ptr<Type> data(hBuffer.data(), [](auto const&) {});
             dataset.storeChunk<Type>(data, localPhaseSpace_offset, localPhaseSpace_extent);
 
             /** meta attributes for the data set: unit, range, moving window **/

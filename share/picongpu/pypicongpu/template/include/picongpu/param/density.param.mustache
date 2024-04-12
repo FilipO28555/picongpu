@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -22,8 +22,6 @@
 
 #include "picongpu/particles/densityProfiles/profiles.def"
 #include "picongpu/particles/traits/GetDensityRatio.hpp"
-/* preprocessor struct generator */
-#include <pmacc/preprocessor/struct.hpp>
 
 namespace picongpu
 {
@@ -88,7 +86,7 @@ namespace picongpu
                             // exponential pre-expanded density ramp after plateau of foil
                             constexpr float_64 postPlasmaLength = {{{profile.data.post_foil_plasmaRamp.data.PlasmaLength}}};
                             constexpr float_64 postPlasmaCutoff = {{{profile.data.post_foil_plasmaRamp.data.PlasmaCutoff}}};
-    
+
                         // postfoil downramp
                             if(y > y1 && y < y1 + postPlasmaCutoff)
                                 dens = static_cast<float_X>({{{profile.data.density_si}}} / SI::BASE_DENSITY_SI)

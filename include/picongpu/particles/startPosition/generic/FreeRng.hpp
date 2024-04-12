@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -143,7 +143,7 @@ namespace picongpu
                     {
                         auto const rng = (*static_cast<RngGenerator const*>(this))(worker, localSupercellOffset);
 
-                        return acc::FreeRng<Functor, ALPAKA_DECAY_T(decltype(rng))>(
+                        return acc::FreeRng<Functor, std::decay_t<decltype(rng)>>(
                             *static_cast<Functor const*>(this),
                             rng);
                     }

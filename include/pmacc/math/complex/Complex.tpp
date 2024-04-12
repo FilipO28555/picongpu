@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -63,7 +63,7 @@ namespace pmacc
 
             HDINLINE result operator()(const T_Type& magnitude, const T_Type& phase)
             {
-                return result(magnitude * cupla::math::cos(phase), magnitude * cupla::math::sin(phase));
+                return result(magnitude * pmacc::math::cos(phase), magnitude * pmacc::math::sin(phase));
             }
 
             HDINLINE result operator()(const T_Type& magnitude, const T_Type& sinValue, const T_Type& cosValue)

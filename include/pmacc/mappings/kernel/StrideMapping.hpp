@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include "pmacc/dimensions/DataSpace.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/mappings/kernel/MapperConcept.hpp"
 #include "pmacc/mappings/kernel/StrideMappingMethods.hpp"
 #include "pmacc/types.hpp"
@@ -88,13 +87,24 @@ namespace pmacc
 
         /** Return index of a supercell to be processed by the given alpaka block
          *
+         * @tparam T_origin Which origin (CORE/BORDER/GUARD) to return supercell index relative to (default: GUARD)
          * @param blockIdx alpaka block index
          * @return mapped SuperCell index including guards
          */
+        template<uint32_t T_origin = GUARD>
         HDINLINE DataSpace<DIM> getSuperCellIndex(const DataSpace<DIM>& blockIdx) const
         {
             const DataSpace<DIM> blockId((blockIdx * stride) + offset);
-            return StrideMappingMethods<areaType, DIM>::shift(*this, blockId);
+            auto result = StrideMappingMethods<areaType, DIM>::shift(*this, blockId);
+            if constexpr(T_origin == CORE)
+            {
+                result = result - 2 * this->getGuardingSuperCells();
+            }
+            if constexpr(T_origin == BORDER)
+            {
+                result = result - this->getGuardingSuperCells();
+            }
+            return result;
         }
 
         HDINLINE DataSpace<DIM> getOffset() const
@@ -115,9 +125,9 @@ namespace pmacc
          */
         bool next()
         {
-            int linearOffset = DataSpaceOperations<Dim>::map(DataSpace<DIM>::create(stride), offset);
+            int linearOffset = pmacc::math::linearize(DataSpace<DIM>::create(stride), offset);
             linearOffset++;
-            offset = DataSpaceOperations<Dim>::map(DataSpace<DIM>::create(stride), linearOffset);
+            offset = pmacc::math::mapToND(DataSpace<DIM>::create(stride), linearOffset);
             /* First check if everything is processed to have a recursion stop condition.
              * Then if the new grid dim has 0 size, immediately go to the next state.
              * This way to guarantee that when next() returned true, a grid dim is valid.

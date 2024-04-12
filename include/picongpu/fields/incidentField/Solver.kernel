@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -450,14 +450,13 @@ namespace picongpu
 
 
                         // Offset of the superCell (in cells, without any guards) to the origin of the local domain
-                        DataSpace<simDim> supercellOffsetCells
-                            = DataSpace<simDim>(cupla::blockIdx(worker.getAcc())) * SuperCellSize::toRT();
+                        DataSpace<simDim> supercellOffsetCells = worker.blockDomIdxND() * SuperCellSize::toRT();
 
                         lockstep::makeForEach<planeSize>(worker)(
-                            [&](uint32_t const linearIdx)
+                            [&](int32_t const linearIdx)
                             {
-                                auto cellIdxInSuperCell
-                                    = DataSpaceOperations<simDim>::template map<T_BlockDescription>(linearIdx);
+                                auto cellIdxInSuperCell = pmacc::math::mapToND(T_BlockDescription::toRT(), linearIdx);
+
                                 auto const updatedGridIdx = beginGridIdx + supercellOffsetCells + cellIdxInSuperCell;
 
                                 /* The index may be outside since the active area is not generally a multiple of block

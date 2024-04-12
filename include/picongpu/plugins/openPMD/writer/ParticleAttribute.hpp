@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -84,6 +84,18 @@ namespace picongpu
                 PMACC_ASSERT(unit.size() == components); // unitSI for each component
                 PMACC_ASSERT(unitDimension.size() == 7); // seven openPMD base units
 
+                auto unitMap = convertToUnitDimension(unitDimension);
+
+                record.setUnitDimension(unitMap);
+                record.setAttribute("macroWeighted", macroWeighted);
+                record.setAttribute("weightingPower", weightingPower);
+
+                /* @todo check if always correct at this point,
+                 * depends on attribute and MW-solver/pusher implementation
+                 */
+                float_X const timeOffset = 0.0;
+                record.setAttribute("timeOffset", timeOffset);
+
                 log<picLog::INPUT_OUTPUT>("openPMD:  (begin) write species attribute: %1%") % Identifier::getName();
 
                 std::shared_ptr<ComponentType> storeBfr;
@@ -103,29 +115,29 @@ namespace picongpu
 
                     if(elements == 0)
                     {
-                        flushSeries(*params->openPMDSeries, PreferredFlushTarget::Disk);
+                        params->openPMDSeries->flush(PreferredFlushTarget::Disk);
                         continue;
                     }
 
                     ValueType* dataPtr = frame.getIdentifier(Identifier()).getPointer(); // can be moved up?
                     // ask openPMD to create a buffer for us
                     // in some backends (ADIOS2), this allows avoiding memcopies
-                    auto span = storeChunkSpan<ComponentType>(
-                                    recordComponent,
-                                    ::openPMD::Offset{globalOffset},
-                                    ::openPMD::Extent{elements},
-                                    [&storeBfr](size_t size)
-                                    {
-                                        // if there is no special backend support for creating buffers,
-                                        // reuse the storeBfr
-                                        if(!storeBfr && size > 0)
+                    auto span = recordComponent
+                                    .storeChunk<ComponentType>(
+                                        ::openPMD::Offset{globalOffset},
+                                        ::openPMD::Extent{elements},
+                                        [&storeBfr](size_t size)
                                         {
-                                            storeBfr = std::shared_ptr<ComponentType>{
-                                                new ComponentType[size],
-                                                [](ComponentType* ptr) { delete[] ptr; }};
-                                        }
-                                        return storeBfr;
-                                    })
+                                            // if there is no special backend support for creating buffers,
+                                            // reuse the storeBfr
+                                            if(!storeBfr && size > 0)
+                                            {
+                                                storeBfr = std::shared_ptr<ComponentType>{
+                                                    new ComponentType[size],
+                                                    [](ComponentType* ptr) { delete[] ptr; }};
+                                            }
+                                            return storeBfr;
+                                        })
                                     .currentBuffer();
 
 /* copy strided data from source to temporary buffer */
@@ -135,20 +147,8 @@ namespace picongpu
                         span[i] = reinterpret_cast<ComponentType*>(dataPtr)[d + i * components];
                     }
 
-                    flushSeries(*params->openPMDSeries, PreferredFlushTarget::Disk);
+                    params->openPMDSeries->flush(PreferredFlushTarget::Disk);
                 }
-
-                auto unitMap = convertToUnitDimension(unitDimension);
-
-                record.setUnitDimension(unitMap);
-                record.setAttribute("macroWeighted", macroWeighted);
-                record.setAttribute("weightingPower", weightingPower);
-
-                /* @todo check if always correct at this point,
-                 * depends on attribute and MW-solver/pusher implementation
-                 */
-                float_X const timeOffset = 0.0;
-                record.setAttribute("timeOffset", timeOffset);
 
                 log<picLog::INPUT_OUTPUT>("openPMD:  ( end ) write species attribute: %1%") % Identifier::getName();
             }

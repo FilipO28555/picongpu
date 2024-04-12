@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -79,8 +79,7 @@ namespace pmacc
                     PMACC_CONSTEXPR_CAPTURE uint32_t dim = T_Mapping::Dim;
 
                     DataSpace<dim> const blockCell(
-                        mapper.getSuperCellIndex(DataSpace<dim>(cupla::blockIdx(worker.getAcc())))
-                        * SuperCellSize::toRT());
+                        mapper.getSuperCellIndex(DataSpace<dim>(worker.blockDomIdxND())) * SuperCellSize::toRT());
 
                     // origin in area from local GPU
                     DataSpace<dim> nullSourceCell(mapper.getSuperCellIndex(DataSpace<dim>()) * SuperCellSize::toRT());
@@ -88,11 +87,10 @@ namespace pmacc
                     auto const numGuardSuperCells = mapper.getGuardingSuperCells();
 
                     lockstep::makeForEach<numCells>(worker)(
-                        [&](uint32_t const linearIdx)
+                        [&](int32_t const linearIdx)
                         {
                             // cell index within the superCell
-                            DataSpace<dim> const cellIdx
-                                = DataSpaceOperations<dim>::template map<SuperCellSize>(linearIdx);
+                            DataSpace<dim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
                             DataSpace<dim> targetCell(blockCell + cellIdx);
                             DataSpace<dim> sourceCell(targetCell - nullSourceCell);
 
@@ -169,23 +167,21 @@ namespace pmacc
                      * @warning pmacc restriction: all dimension must have the some number of guarding
                      * supercells
                      */
-                    auto const numGuardSuperCells = destBuffer.getGridLayout().getGuard() / SuperCellSize::toRT();
+                    auto const numGuardSuperCells = destBuffer.getGridLayout().guardSizeND() / SuperCellSize::toRT();
 
-                    MappingDesc const mappingDesc(destBuffer.getGridLayout().getDataSpace(), numGuardSuperCells);
+                    MappingDesc const mappingDesc(destBuffer.getGridLayout().sizeND(), numGuardSuperCells);
 
                     ExchangeMapping<GUARD, MappingDesc> mapper(mappingDesc, exchangeType);
 
                     const DataSpace<dim> direction = Mask::getRelativeDirections<dim>(mapper.getExchangeType());
 
-                    auto workerCfg = lockstep::makeWorkerCfg(SuperCellSize{});
-
-                    PMACC_LOCKSTEP_KERNEL(KernelAddExchangeToBorder{}, workerCfg)
-                    (mapper.getGridDim())(
-                        destBuffer.getDeviceBuffer().getDataBox(),
-                        destBuffer.getReceiveExchange(exchangeType).getDeviceBuffer().getDataBox(),
-                        destBuffer.getReceiveExchange(exchangeType).getDeviceBuffer().getDataSpace(),
-                        direction,
-                        mapper);
+                    PMACC_LOCKSTEP_KERNEL(KernelAddExchangeToBorder{})
+                        .config(mapper.getGridDim(), SuperCellSize{})(
+                            destBuffer.getDeviceBuffer().getDataBox(),
+                            destBuffer.getReceiveExchange(exchangeType).getDeviceBuffer().getDataBox(),
+                            destBuffer.getReceiveExchange(exchangeType).getDeviceBuffer().capacityND(),
+                            direction,
+                            mapper);
                 }
             };
 

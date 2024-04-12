@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -23,6 +23,8 @@
 #include "picongpu/plugins/binning/BinningData.hpp"
 #include "picongpu/plugins/binning/DomainInfo.hpp"
 #include "picongpu/plugins/binning/utility.hpp"
+
+#include <cstdint>
 
 namespace picongpu
 {
@@ -59,26 +61,28 @@ namespace picongpu
             {
                 using DepositionType = typename T_HistBox::ValueType;
 
-                DepositionType depositVal = quantityFunctor(worker, particle);
-
                 auto binsDataspace = DataSpace<N_Axes>{};
+                bool validIdx = true;
                 apply(
                     [&](auto const&... tupleArgs)
                     {
                         uint32_t i = 0;
                         // This assumes n_bins and getBinIdx exist
-                        ((binsDataspace[i++] = tupleArgs.getBinIdx(domainInfo, worker, particle)), ...);
+                        ((binsDataspace[i++] = tupleArgs.getBinIdx(domainInfo, worker, particle, validIdx)), ...);
                     },
                     axisTuple);
 
-                auto const idxOneD = DataSpaceOperations<N_Axes>::map(extentsDataspace, binsDataspace);
-
-                cupla::atomicAdd(
-                    worker.getAcc(),
-                    // &(histBox(binsDataspace)),
-                    &(histBox(DataSpace<1u>{static_cast<int>(idxOneD)})),
-                    depositVal,
-                    ::alpaka::hierarchy::Blocks{});
+                if(validIdx)
+                {
+                    auto const idxOneD = pmacc::math::linearize(extentsDataspace, binsDataspace);
+                    DepositionType depositVal = quantityFunctor(worker, particle);
+                    alpaka::atomicAdd(
+                        worker.getAcc(),
+                        // &(histBox(binsDataspace)),
+                        &(histBox(DataSpace<1u>{static_cast<int>(idxOneD)})),
+                        depositVal,
+                        ::alpaka::hierarchy::Blocks{});
+                }
             }
         };
 
@@ -134,8 +138,7 @@ namespace picongpu
             template<typename T_Worker, typename T_Mapping>
             DINLINE void operator()(const T_Worker& worker, T_Mapping const& mapper) const
             {
-                const DataSpace<SIMDIM> superCellIdx(
-                    mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+                const DataSpace<SIMDIM> superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
                 /**
                  * Init the Domain info, here because of the possibility of a moving window

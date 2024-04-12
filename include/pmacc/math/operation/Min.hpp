@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -37,7 +37,7 @@ namespace pmacc
                 template<typename Dst, typename Src>
                 HDINLINE void operator()(Dst& dst, const Src& src) const
                 {
-                    dst = cupla::math::min(dst, src);
+                    dst = pmacc::math::min(dst, src);
                 }
 
                 template<typename Dst, typename Src, typename T_Worker>

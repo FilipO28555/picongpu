@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -20,6 +20,8 @@
  */
 
 #include "pmacc/eventSystem/events/CudaEventHandle.hpp"
+
+#include "pmacc/alpakaHelper/acc.hpp"
 
 namespace pmacc
 {
@@ -53,7 +55,7 @@ namespace pmacc
         event = nullptr;
     }
 
-    cuplaEvent_t CudaEventHandle::operator*() const
+    AlpakaEventType CudaEventHandle::operator*() const
     {
         assert(event);
         return **event;
@@ -65,13 +67,13 @@ namespace pmacc
         return event->isFinished();
     }
 
-    cuplaStream_t CudaEventHandle::getStream() const
+    AccStream CudaEventHandle::getStream() const
     {
         PMACC_ASSERT(event);
         return event->getStream();
     }
 
-    void CudaEventHandle::recordEvent(cuplaStream_t stream)
+    void CudaEventHandle::recordEvent(AccStream const& stream)
     {
         PMACC_ASSERT(event);
         event->recordEvent(stream);

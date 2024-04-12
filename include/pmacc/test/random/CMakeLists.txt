@@ -10,7 +10,7 @@
 #
 # PMacc is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License and the GNU Lesser General Public License
 # for more details.
 #
@@ -53,7 +53,7 @@ find_package(PMacc REQUIRED CONFIG PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 # Targets
 ###############################################################################
 
-cupla_add_executable(TestRng 2DDistribution.cpp)
+alpaka_add_executable(TestRng 2DDistribution.cpp)
 target_link_libraries(TestRng PRIVATE pmacc::pmacc)
 
 add_custom_target(run

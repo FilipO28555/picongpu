@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -121,11 +121,10 @@ namespace picongpu
                             collision::Sqrt1DimVector>;
                         DataBoxDim1Access<SqrtBox> d1access(
                             SqrtBox(screeningLengthSquared->getDeviceDataBox().shift(
-                                screeningLengthSquared->getGridLayout().getGuard())),
-                            screeningLengthSquared->getGridLayout().getDataSpaceWithoutGuarding());
-                        const auto elements = static_cast<uint32_t>(screeningLengthSquared->getGridLayout()
-                                                                        .getDataSpaceWithoutGuarding()
-                                                                        .productOfComponents());
+                                screeningLengthSquared->getGridLayout().guardSizeND())),
+                            screeningLengthSquared->getGridLayout().sizeWithoutGuardND());
+                        const auto elements = static_cast<uint32_t>(
+                            screeningLengthSquared->getGridLayout().sizeWithoutGuardND().productOfComponents());
                         auto reducedValue = globalReduce(pmacc::math::operation::Add(), d1access, elements);
 
                         mpi::MPIReduce reduce{};

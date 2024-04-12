@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -77,17 +77,15 @@ namespace picongpu
             {
                 constexpr uint32_t cellsPerSupercell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
-                DataSpace<simDim> const block(
-                    mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+                DataSpace<simDim> const block(mapper.getSuperCellIndex(worker.blockDomIdxND()));
                 DataSpace<simDim> const blockCell = block * SuperCellSize::toRT();
                 DataSpace<simDim> const guardCells = mapper.getGuardingSuperCells() * SuperCellSize::toRT();
 
                 lockstep::makeForEach<cellsPerSupercell>(worker)(
-                    [&](uint32_t const linearIdx)
+                    [&](int32_t const linearIdx)
                     {
                         // cell index within the superCell
-                        DataSpace<simDim> const cellIdx
-                            = DataSpaceOperations<simDim>::template map<SuperCellSize>(linearIdx);
+                        DataSpace<simDim> const cellIdx = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
 
                         opFunctor(
                             worker,
@@ -134,15 +132,14 @@ namespace picongpu
 
                 auto const mapper = makeAreaMapper<T_Area>(m_cellDescription);
 
-                auto workerCfg = pmacc::lockstep::makeWorkerCfg(SuperCellSize{});
-                PMACC_LOCKSTEP_KERNEL(KernelCellwiseOperation{}, workerCfg)
-                (mapper.getGridDim())(
-                    field->getDeviceDataBox(),
-                    opFunctor,
-                    valFunctor,
-                    totalDomainOffset,
-                    currentStep,
-                    mapper);
+                PMACC_LOCKSTEP_KERNEL(KernelCellwiseOperation{})
+                    .config(mapper.getGridDim(), SuperCellSize{})(
+                        field->getDeviceDataBox(),
+                        opFunctor,
+                        valFunctor,
+                        totalDomainOffset,
+                        currentStep,
+                        mapper);
             }
         };
 

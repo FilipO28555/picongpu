@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -24,7 +24,6 @@
 
 #include "pmacc/Environment.hpp"
 #include "pmacc/assert.hpp"
-#include "pmacc/eventSystem/streams/EventStream.hpp"
 
 namespace pmacc
 {
@@ -36,13 +35,13 @@ namespace pmacc
     CudaEventHandle StreamTask::getCudaEventHandle() const
     {
         PMACC_ASSERT(hasCudaEventHandle);
-        return cuplaEvent;
+        return m_alpakaEvent;
     }
 
-    void StreamTask::setCudaEventHandle(const CudaEventHandle& cuplaEvent)
+    void StreamTask::setCudaEventHandle(const CudaEventHandle& alpakaEvent)
     {
         this->hasCudaEventHandle = true;
-        this->cuplaEvent = cuplaEvent;
+        this->m_alpakaEvent = alpakaEvent;
     }
 
     bool StreamTask::isFinished()
@@ -51,7 +50,7 @@ namespace pmacc
             return true;
         if(hasCudaEventHandle)
         {
-            if(cuplaEvent.isFinished())
+            if(m_alpakaEvent.isFinished())
             {
                 alwaysFinished = true;
                 return true;
@@ -74,7 +73,7 @@ namespace pmacc
         this->stream = newStream;
     }
 
-    cuplaStream_t StreamTask::getCudaStream()
+    AccStream StreamTask::getCudaStream()
     {
         if(stream == nullptr)
             stream = eventSystem::getEventStream(TASK_DEVICE);
@@ -83,8 +82,8 @@ namespace pmacc
 
     void StreamTask::activate()
     {
-        cuplaEvent = Environment<>::get().EventPool().pop();
-        cuplaEvent.recordEvent(getCudaStream());
+        m_alpakaEvent = Environment<>::get().EventPool().pop();
+        m_alpakaEvent.recordEvent(getCudaStream());
         hasCudaEventHandle = true;
     }
 

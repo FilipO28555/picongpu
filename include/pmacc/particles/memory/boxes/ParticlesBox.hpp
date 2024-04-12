@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -26,6 +26,7 @@
 #    include <mallocMC/mallocMC.hpp>
 #endif
 #include "pmacc/dimensions/DataSpace.hpp"
+#include "pmacc/lockstep.hpp"
 #include "pmacc/memory/boxes/DataBox.hpp"
 #include "pmacc/memory/boxes/PitchedBox.hpp"
 #include "pmacc/particles/Identifier.hpp"
@@ -139,7 +140,7 @@ namespace pmacc
         HDINLINE
         FramePtr mapPtr(FramePtr devPtr) const
         {
-#if(CUPLA_DEVICE_COMPILE == 1)
+#if(PMACC_DEVICE_COMPILE == 1)
             return devPtr;
 #else
             int64_t useOffset = hostMemoryOffset * static_cast<int64_t>(devPtr.ptr != nullptr);
@@ -211,7 +212,7 @@ namespace pmacc
              */
             alpaka::mem_fence(worker.getAcc(), alpaka::memory_scope::Device{});
 
-            FramePtr oldFirstFramePtr((FrameType*) cupla::atomicExch(
+            FramePtr oldFirstFramePtr((FrameType*) alpaka::atomicExch(
                 worker.getAcc(),
                 (unsigned long long int*) firstFrameNativPtr,
                 (unsigned long long int) frame.ptr,
@@ -249,7 +250,7 @@ namespace pmacc
              */
             alpaka::mem_fence(worker.getAcc(), alpaka::memory_scope::Device{});
 
-            FramePtr oldLastFramePtr((FrameType*) cupla::atomicExch(
+            FramePtr oldLastFramePtr((FrameType*) alpaka::atomicExch(
                 worker.getAcc(),
                 (unsigned long long int*) lastFrameNativPtr,
                 (unsigned long long int) frame.ptr,
@@ -310,5 +311,17 @@ namespace pmacc
             return BaseType::operator()(idx);
         }
     };
+
+    namespace lockstep::traits
+    {
+        //! Specialization to create a lockstep block configuration out of a particle buffer.
+        template<class T_Frame, typename T_DeviceHeapHandle, typename T_SuperCellSize, unsigned T_dim>
+        struct MakeBlockCfg<ParticlesBox<T_Frame, T_DeviceHeapHandle, T_SuperCellSize, T_dim>> : std::true_type
+        {
+            static constexpr uint32_t frameSize
+                = ParticlesBox<T_Frame, T_DeviceHeapHandle, T_SuperCellSize, T_dim>::FrameType::frameSize;
+            using type = BlockCfg<math::CT::UInt32<frameSize>>;
+        };
+    } // namespace lockstep::traits
 
 } // namespace pmacc

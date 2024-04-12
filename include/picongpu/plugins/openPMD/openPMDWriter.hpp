@@ -32,6 +32,7 @@
 #include "picongpu/particles/particleToGrid/ComputeFieldValue.hpp"
 #include "picongpu/particles/traits/SpeciesEligibleForSolver.hpp"
 #include "picongpu/plugins/common/openPMDDefaultExtension.hpp"
+#include "picongpu/plugins/common/openPMDDefinitions.def"
 #include "picongpu/plugins/common/openPMDVersion.def"
 #include "picongpu/plugins/common/openPMDWriteMeta.hpp"
 #include "picongpu/plugins/misc/ComponentNames.hpp"
@@ -832,6 +833,9 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
                      * solver implementation */
                     const float_X timeOffset = 0.0;
 
+                    // avoid deadlock between not finished pmacc MPI communication tasks and mpi blocking collectives
+                    // used during IO
+                    eventSystem::getTransactionEvent().waitForFinished();
                     bool const isDomainBound = traits::IsFieldDomainBound<FieldTmp>::value;
                     /*write data to openPMD Series*/
                     openPMDWriter::template writeField<ComponentType>(
@@ -911,10 +915,10 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
 
                 auto& buffer = rngProvider->getStateBuffer();
                 // getPointer() will wait for device->host transfer
-                ValueType* nativePtr = buffer.getHostBuffer().getPointer();
+                ValueType* nativePtr = buffer.getHostBuffer().data();
                 ReinterpretedType* rawPtr = reinterpret_cast<ReinterpretedType*>(nativePtr);
-                storeChunkRaw(mrc, rawPtr, asStandardVector(recordOffsetDims), asStandardVector(recordLocalSizeDims));
-                flushSeries(*params->openPMDSeries, PreferredFlushTarget::Disk);
+                mrc.storeChunkRaw(rawPtr, asStandardVector(recordOffsetDims), asStandardVector(recordLocalSizeDims));
+                params->openPMDSeries->flush(PreferredFlushTarget::Disk);
             }
 
             /** Implementation of loading random number generator states
@@ -959,13 +963,12 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
                 recordOffsetDims[0] *= sizeof(ValueType);
 
                 auto& buffer = rngProvider->getStateBuffer();
-                ValueType* nativePtr = buffer.getHostBuffer().getPointer();
+                ValueType* nativePtr = buffer.getHostBuffer().data();
                 ReinterpretedType* rawPtr = reinterpret_cast<ReinterpretedType*>(nativePtr);
                 /* Explicit template parameters to asStandardVector required
                  * as we need to change the element type as well
                  */
-                loadChunkRaw(
-                    mrc,
+                mrc.loadChunkRaw(
                     rawPtr,
                     asStandardVector<VecUInt64, ::openPMD::Offset>(recordOffsetDims),
                     asStandardVector<VecUInt64, ::openPMD::Extent>(recordLocalSizeDims));
@@ -1362,7 +1365,7 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
                         = std::max(0, mThreadParams.window.globalDimensions.offset[i] - localDomain.offset[i]);
                 }
 
-#if(PMACC_CUDA_ENABLED == 1 || ALPAKA_ACC_GPU_HIP_ENABLED == 1)
+#if(ALPAKA_ACC_GPU_CUDA_ENABLED || ALPAKA_ACC_GPU_HIP_ENABLED)
                 /* copy species only one time per timestep to the host */
                 if(mThreadParams.strategy == WriteSpeciesStrategy::ADIOS && lastSpeciesSyncStep != currentStep)
                 {
@@ -1526,10 +1529,10 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
 
                 /* data to describe source buffer */
                 GridLayout<simDim> bufferGridLayout = buffer.getGridLayout();
-                DataSpace<simDim> bufferSize = bufferGridLayout.getDataSpace();
+                DataSpace<simDim> bufferSize = bufferGridLayout.sizeND();
 
                 DataSpace<simDim> localWindowSize = params->window.localDimensions.size;
-                DataSpace<simDim> bufferOffset = bufferGridLayout.getGuard() + params->localWindowToDomainOffset;
+                DataSpace<simDim> bufferOffset = bufferGridLayout.guardSizeND() + params->localWindowToDomainOffset;
                 std::vector<char>& fieldBuffer = params->fieldBuffer;
 
                 pmacc::math::UInt64<simDim> recordLocalSizeDims = localWindowSize;
@@ -1541,8 +1544,8 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
                  */
                 if(!isDomainBound)
                 {
-                    localWindowSize = bufferGridLayout.getDataSpaceWithoutGuarding();
-                    bufferOffset = bufferGridLayout.getGuard();
+                    localWindowSize = bufferGridLayout.sizeWithoutGuardND();
+                    bufferOffset = bufferGridLayout.guardSizeND();
 
                     recordLocalSizeDims = precisionCast<uint64_t>(localWindowSize);
 
@@ -1625,14 +1628,13 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
 
                     if(numDataPoints == 0)
                     {
-                        flushSeries(*params->openPMDSeries, PreferredFlushTarget::Disk);
+                        params->openPMDSeries->flush(PreferredFlushTarget::Disk);
                         continue;
                     }
 
                     // ask openPMD to create a buffer for us
                     // in some backends (ADIOS2), this allows avoiding memcopies
-                    auto span = storeChunkSpan<ComponentType>(
-                        mrc,
+                    auto span = mrc.storeChunk<ComponentType>(
                         asStandardVector(recordOffsetDims),
                         asStandardVector(recordLocalSizeDims),
                         [&fieldBuffer](size_t size)
@@ -1676,7 +1678,7 @@ make sure that environment variable OPENPMD_BP_BACKEND is not set to ADIOS1.
                         }
                     }
 
-                    flushSeries(*params->openPMDSeries, PreferredFlushTarget::Disk);
+                    params->openPMDSeries->flush(PreferredFlushTarget::Disk);
                 }
             }
 

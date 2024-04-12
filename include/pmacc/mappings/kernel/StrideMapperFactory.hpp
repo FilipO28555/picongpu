@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -23,7 +23,6 @@
 #pragma once
 
 #include "pmacc/dimensions/DataSpace.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/mappings/kernel/AreaMapping.hpp"
 #include "pmacc/mappings/kernel/IntervalMapping.hpp"
 #include "pmacc/mappings/kernel/StrideIntervalMapping.hpp"

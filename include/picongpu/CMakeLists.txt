@@ -11,7 +11,7 @@
 #
 # PIConGPU is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -313,7 +313,7 @@ PIC_dependency(openPMD "API for IO" AUTO)
 
 if(PIC_SEARCH_openPMD)
     # find openPMD installation
-    find_package(openPMD 0.14.3 CONFIG COMPONENTS MPI)
+    find_package(openPMD 0.15 CONFIG COMPONENTS MPI)
     if(openPMD_FOUND)
         # HDF5 and ADIOS require linking against C libraries but this is not correctly
         # exposed.
@@ -322,34 +322,10 @@ if(PIC_SEARCH_openPMD)
         if(openPMD_HAVE_ADIOS2 OR openPMD_HAVE_HDF5)
             message(STATUS "Found openPMD: ${openPMD_DIR}")
             add_definitions(-DENABLE_OPENPMD=1)
-
-            # none of these should appear in cmake-gui, so make them internal
-            set(JSON_BuildTests OFF CACHE INTERNAL "")
-            set(JSON_MultipleHeaders OFF CACHE INTERNAL "")
-            set(JSON_ImplicitConversions OFF CACHE INTERNAL "")
-            set(JSON_Install OFF CACHE INTERNAL "")  # only used PRIVATE
-
-            # allow using externally installed nlohmann_json
-            set(
-                PIC_nlohmann_json_PROVIDER "intern" CACHE
-                STRING "Use internally shipped or external nlohmann_json library.")
-            set_property(
-                CACHE PIC_nlohmann_json_PROVIDER
-                PROPERTY STRINGS "intern;extern")
-            mark_as_advanced(PIC_nlohmann_json_PROVIDER)
-            if(${PIC_nlohmann_json_PROVIDER} STREQUAL "intern")
-                add_subdirectory(
-                    "${PIConGPUapp_SOURCE_DIR}/../../thirdParty/nlohmann_json"
-                    "${CMAKE_CURRENT_BINARY_DIR}/build_nlohmann_json")
-            else()
-                find_package(nlohmann_json 3.9.1 CONFIG REQUIRED)
-                message(STATUS "nlohmann-json: Found version '${nlohmann_json_VERSION}'")
-            endif()
-
             # TOML
             set(
                 PIC_toml11_PROVIDER "intern" CACHE
-                STRING "Use internally shipped or external nlohmann_json library.")
+                STRING "Use internally shipped or external toml11 library.")
             set_property(
                 CACHE PIC_toml11_PROVIDER
                 PROPERTY STRINGS "intern;extern")
@@ -382,6 +358,34 @@ if(PIC_SEARCH_openPMD)
 endif()
 
 PIC_dependency_set_status(openPMD ${openPMD_FOUND})
+
+################################################################################
+# JSON
+################################################################################
+
+# none of these should appear in cmake-gui, so make them internal
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_MultipleHeaders OFF CACHE INTERNAL "")
+set(JSON_ImplicitConversions OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")  # only used PRIVATE
+
+# allow using externally installed nlohmann_json
+set(
+    PIC_nlohmann_json_PROVIDER "intern" CACHE
+    STRING "Use internally shipped or external nlohmann_json library.")
+set_property(
+    CACHE PIC_nlohmann_json_PROVIDER
+    PROPERTY STRINGS "intern;extern")
+mark_as_advanced(PIC_nlohmann_json_PROVIDER)
+if(${PIC_nlohmann_json_PROVIDER} STREQUAL "intern")
+    add_subdirectory(
+        "${PIConGPUapp_SOURCE_DIR}/../../thirdParty/nlohmann_json"
+        "${CMAKE_CURRENT_BINARY_DIR}/build_nlohmann_json")
+else()
+    find_package(nlohmann_json 3.9.1 CONFIG REQUIRED)
+    message(STATUS "nlohmann-json: Found version '${nlohmann_json_VERSION}'")
+endif()
+
 
 ################################################################################
 # PNGwriter
@@ -513,28 +517,48 @@ target_link_libraries(picongpu-hostonly PUBLIC ${HOST_LIBS})
 # compatibility to std::experimental::filesystem is handled in pmacc.
 target_link_libraries(picongpu-hostonly PRIVATE pmacc::filesystem)
 
-cupla_add_executable(picongpu
+alpaka_add_executable(picongpu
      ${ACCSRCFILES}
 )
 
 target_link_libraries(picongpu PUBLIC ${LIBS} ${HOST_LIBS} picongpu-hostonly)
 target_link_libraries(picongpu PRIVATE pmacc::pmacc)
 
-if(PIC_HAVE_openPMD)
-    # Including <nlohmann/json.hpp> will throw loads of warnings. Quiet them.
-    # (Doesn't work for nvcc??)
-    target_include_directories(
-        picongpu-hostonly
-        SYSTEM PRIVATE
-        $<TARGET_PROPERTY:nlohmann_json::nlohmann_json,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_link_libraries(picongpu-hostonly PRIVATE nlohmann_json::nlohmann_json)
+# Including <nlohmann/json.hpp> will throw loads of warnings. Quiet them.
+# (Doesn't work for nvcc??)
+target_include_directories(
+    picongpu-hostonly
+    SYSTEM PRIVATE
+    $<TARGET_PROPERTY:nlohmann_json::nlohmann_json,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(picongpu-hostonly PRIVATE nlohmann_json::nlohmann_json)
 
+target_include_directories(
+    picongpu
+    SYSTEM PRIVATE
+    $<TARGET_PROPERTY:nlohmann_json::nlohmann_json,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(picongpu PRIVATE nlohmann_json::nlohmann_json)
+
+if(PIC_HAVE_openPMD)
     # same tricks for toml11
     target_include_directories(
         picongpu-hostonly
         SYSTEM PRIVATE
         $<TARGET_PROPERTY:toml11::toml11,INTERFACE_INCLUDE_DIRECTORIES>)
     target_link_libraries(picongpu-hostonly PRIVATE toml11::toml11)
+
+    # This is a workaround for a missing API call in the openPMD-api,
+    # which currently does not re-export backend version information.
+    # https://github.com/openPMD/openPMD-api/issues/1563
+    if(openPMD_HAVE_ADIOS2)
+        foreach(target picongpu picongpu-hostonly)
+            target_compile_definitions(
+                ${target}
+                PRIVATE
+                ADIOS2_VERSION_MAJOR=${ADIOS2_VERSION_MAJOR}
+                ADIOS2_VERSION_MINOR=${ADIOS2_VERSION_MINOR}
+                ADIOS2_VERSION_PATCH=${ADIOS2_VERSION_PATCH})
+        endforeach()
+    endif()
 endif()
 
 ## annotate with RPATH's
@@ -662,4 +686,3 @@ foreach(dep IN LISTS PIC_DEPENDENCY_LIST)
     endif()
 endforeach()
 message("")
-

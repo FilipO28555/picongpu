@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -22,7 +22,6 @@
 #pragma once
 
 #include "pmacc/Environment.hpp"
-#include "pmacc/dimensions/DataSpaceOperations.hpp"
 #include "pmacc/lockstep/lockstep.hpp"
 #include "pmacc/random/RNGProvider.hpp"
 
@@ -46,13 +45,13 @@ namespace pmacc
                     auto forEachCell = lockstep::makeForEach<T_blockSize>(worker);
 
                     forEachCell(
-                        [&](uint32_t const linearIdx)
+                        [&](int32_t const linearIdx)
                         {
-                            int32_t const linearTid = cupla::blockIdx(worker.getAcc()).x * T_blockSize + linearIdx;
+                            int32_t const linearTid = worker.blockDomIdxND().x() * T_blockSize + linearIdx;
                             if(linearTid >= size.productOfComponents())
                                 return;
 
-                            T_Space const cellIdx = DataSpaceOperations<T_Space::dim>::map(size, linearTid);
+                            T_Space const cellIdx = math::mapToND(size, linearTid);
                             T_RNGMethod().init(worker, rngBox(cellIdx), seed, linearTid);
                         });
                 }
@@ -75,14 +74,12 @@ namespace pmacc
         {
             constexpr uint32_t blockSize = 256;
 
-            auto workerCfg = lockstep::makeWorkerCfg<blockSize>();
-
             const uint32_t gridSize = (m_size.productOfComponents() + blockSize - 1u) / blockSize; // Round up
 
             auto bufferBox = buffer->getDeviceBuffer().getDataBox();
 
-            PMACC_LOCKSTEP_KERNEL(kernel::InitRNGProvider<blockSize, RNGMethod>{}, workerCfg)
-            (gridSize)(bufferBox, seed, m_size);
+            PMACC_LOCKSTEP_KERNEL(kernel::InitRNGProvider<blockSize, RNGMethod>{})
+                .template config<blockSize>(gridSize)(bufferBox, seed, m_size);
         }
 
         template<uint32_t T_dim, class T_RNGMethod>

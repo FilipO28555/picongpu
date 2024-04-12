@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -55,8 +55,8 @@ namespace pmacc
                     return smem;
                 }
 
-                template<typename T_Acc, uint32_t T_numSuggestedWorkers>
-                DINLINE static T_Type& get(pmacc::lockstep::Worker<T_Acc, T_numSuggestedWorkers> const& worker)
+                template<typename T_Acc, typename T_BlockCfg>
+                DINLINE static T_Type& get(pmacc::lockstep::Worker<T_Acc, T_BlockCfg> const& worker)
                 {
                     auto& smem = ::alpaka::declareSharedVar<T_Type, T_uniqueId>(worker.getAcc());
                     return smem;

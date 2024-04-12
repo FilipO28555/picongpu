@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -26,6 +26,8 @@
  */
 
 #pragma once
+
+#include <pmacc/alpakaHelper/acc.hpp>
 
 #include <mallocMC/mallocMC.hpp>
 
@@ -57,11 +59,11 @@ namespace picongpu
      * algorithm.
      */
     using DeviceHeap = mallocMC::Allocator<
-        cupla::Acc,
+        pmacc::Acc<DIM1>,
         mallocMC::CreationPolicies::Scatter<DeviceHeapConfig>,
         mallocMC::DistributionPolicies::Noop,
         mallocMC::OOMPolicies::ReturnNull,
-        mallocMC::ReservePoolPolicies::AlpakaBuf<cupla::Acc>,
+        mallocMC::ReservePoolPolicies::AlpakaBuf<pmacc::Acc<DIM1>>,
         mallocMC::AlignmentPolicies::Shrink<>>;
 
 } // namespace picongpu

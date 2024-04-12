@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -35,7 +35,6 @@
 #include "picongpu/plugins/radiation/executeParticleFilter.hpp"
 
 #include <pmacc/dataManagement/DataConnector.hpp>
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/filesystem.hpp>
 #include <pmacc/lockstep/lockstep.hpp>
 #include <pmacc/math/operation.hpp>
@@ -284,7 +283,7 @@ namespace picongpu
                 }
 
 
-                void checkpoint(uint32_t timeStep, const std::string restartDirectory)
+                void checkpoint(uint32_t timeStep, const std::string restartDirectory) override
                 {
                     // only write backup if radiation is calculated:
                     if(notifyPeriod.empty())
@@ -338,7 +337,7 @@ namespace picongpu
                         /* allocate memory for all amplitudes for temporal data collection
                          * ACCUMULATOR! Should be in double precision for numerical stability.
                          */
-                        tmp_result.resize(elements_amplitude(), Amplitude::zero());
+                        tmp_result.resize(elementsAmplitude(), Amplitude::zero());
 
                         /*only rank 0 creates a file*/
                         isMaster = reduce.hasResult(mpi::reduceMethods::Reduce());
@@ -348,7 +347,7 @@ namespace picongpu
                          * line option numJobs is > 1.
                          */
                         radiation
-                            = std::make_unique<GridBuffer<Amplitude, 2>>(DataSpace<2>(elements_amplitude(), numJobs));
+                            = std::make_unique<GridBuffer<Amplitude, 2>>(DataSpace<2>(elementsAmplitude(), numJobs));
 
                         freqInit.Init(frequencies_from_list::listLocation);
                         freqFkt = freqInit.getFunctor();
@@ -358,14 +357,14 @@ namespace picongpu
 
                         if(isMaster)
                         {
-                            timeSumArray.resize(elements_amplitude(), Amplitude::zero());
+                            timeSumArray.resize(elementsAmplitude(), Amplitude::zero());
 
                             /* save detector position / observation direction */
                             detectorPositions.resize(parameters::N_observer);
                             for(uint32_t detectorIndex = 0; detectorIndex < parameters::N_observer; ++detectorIndex)
                             {
                                 detectorPositions[detectorIndex]
-                                    = radiation_observer::observation_direction(detectorIndex);
+                                    = radiation_observer::observationDirection(detectorIndex);
                             }
 
                             /* save detector frequencies */
@@ -424,8 +423,6 @@ namespace picongpu
                             collectDataGPUToMaster();
                             writeAllFiles(globalOffset);
                         }
-
-                        CUDA_CHECK(cuplaGetLastError());
                     }
                 }
 
@@ -437,7 +434,7 @@ namespace picongpu
                     eventSystem::getTransactionEvent().waitForFinished();
 
                     auto dbox = radiation->getHostBuffer().getDataBox();
-                    int numAmp = elements_amplitude();
+                    int numAmp = elementsAmplitude();
                     // update the main result matrix (y index zero)
                     for(int resultIdx = 1; resultIdx < numJobs; ++resultIdx)
                         for(int ampIdx = 0; ampIdx < numAmp; ++ampIdx)
@@ -467,7 +464,7 @@ namespace picongpu
                                 GPUpos_str << "_" << currentGPUpos[dimIndex];
 
                             writeFile(
-                                radiation->getHostBuffer().getBasePointer(),
+                                radiation->getHostBuffer().data(),
                                 folderRadPerGPU + "/" + speciesName + "_radPerGPU_pos" + GPUpos_str.str() + "_time_"
                                     + last_time_step_str.str() + "-" + current_time_step_str.str() + ".dat");
                         }
@@ -477,7 +474,7 @@ namespace picongpu
 
 
                 /** returns number of observers (radiation detectors) */
-                static unsigned int elements_amplitude()
+                static unsigned int elementsAmplitude()
                 {
                     return radiation_frequencies::N_omega
                         * parameters::N_observer; // storage for amplitude results on GPU
@@ -491,8 +488,8 @@ namespace picongpu
                     reduce(
                         pmacc::math::operation::Add(),
                         tmp_result.data(),
-                        radiation->getHostBuffer().getBasePointer(),
-                        elements_amplitude(),
+                        radiation->getHostBuffer().data(),
+                        elementsAmplitude(),
                         mpi::reduceMethods::Reduce());
                 }
 
@@ -504,7 +501,7 @@ namespace picongpu
                     if(isMaster)
                     {
                         // add last amplitudes to previous amplitudes
-                        for(unsigned int i = 0; i < elements_amplitude(); ++i)
+                        for(unsigned int i = 0; i < elementsAmplitude(); ++i)
                             targetArray[i] += summandArray[i];
                     }
                 }
@@ -801,7 +798,7 @@ namespace picongpu
 
                         /* get the radiation amplitude unit */
                         Amplitude UnityAmplitude(1., 0., 0., 0., 0., 0.);
-                        const picongpu::float_64 factor = UnityAmplitude.calc_radiation() * UNIT_ENERGY * UNIT_TIME;
+                        const picongpu::float_64 factor = UnityAmplitude.calcRadiation() * UNIT_ENERGY * UNIT_TIME;
 
                         // buffer for data re-arangement
                         const int N_tmpBuffer = radiation_frequencies::N_omega * parameters::N_observer;
@@ -816,7 +813,7 @@ namespace picongpu
                         ::openPMD::Extent local_extent_amp
                             = {1, parameters::N_observer, radiation_frequencies::N_omega};
 
-                        auto srcBuffer = radiation->getHostBuffer().getBasePointer();
+                        auto srcBuffer = radiation->getHostBuffer().data();
 
                         /*
                          * numComponents includes the components of a complex number, e.g. in a 3D simulation,
@@ -835,19 +832,19 @@ namespace picongpu
 
                             // ask openPMD to create a buffer for us
                             // in some backends (ADIOS2), this allows avoiding memcopies
-                            auto span = ::picongpu::openPMD::storeChunkSpan<std::complex<double>>(
-                                            mesh_amp[dir],
-                                            local_offset_amp,
-                                            local_extent_amp,
-                                            [&fallbackBuffer](size_t numElements)
-                                            {
-                                                // if there is no special backend support for creating buffers,
-                                                // use the fallback buffer
-                                                fallbackBuffer.resize(numElements);
-                                                return std::shared_ptr<std::complex<float_64>>{
-                                                    fallbackBuffer.data(),
-                                                    [](auto const*) {}};
-                                            })
+                            auto span = mesh_amp[dir]
+                                            .storeChunk<std::complex<double>>(
+                                                local_offset_amp,
+                                                local_extent_amp,
+                                                [&fallbackBuffer](size_t numElements)
+                                                {
+                                                    // if there is no special backend support for creating buffers,
+                                                    // use the fallback buffer
+                                                    fallbackBuffer.resize(numElements);
+                                                    return std::shared_ptr<std::complex<float_64>>{
+                                                        fallbackBuffer.data(),
+                                                        [](auto const*) {}};
+                                                })
                                             .currentBuffer();
 
                             // std::complex has guarantees on array-oriented access, so let's use this to make our
@@ -884,7 +881,7 @@ namespace picongpu
 
                         /* get the radiation amplitude unit */
                         Amplitude UnityAmplitude(1., 0., 0., 0., 0., 0.);
-                        const picongpu::float_64 factor = UnityAmplitude.calc_radiation() * UNIT_ENERGY * UNIT_TIME;
+                        const picongpu::float_64 factor = UnityAmplitude.calcRadiation() * UNIT_ENERGY * UNIT_TIME;
 
                         // buffer for data re-arangement
                         const int N_tmpBuffer = radiation_frequencies::N_omega * parameters::N_observer;
@@ -907,20 +904,20 @@ namespace picongpu
                             // in some backends (ADIOS2), this allows avoiding memcopies
                             if(isMaster)
                             {
-                                auto span
-                                    = ::picongpu::openPMD::storeChunkSpan<double>(
-                                          mesh_amp[dir],
-                                          offset_amp,
-                                          extent_amp,
-                                          [&fallbackBuffer](size_t numElements)
-                                          {
-                                              // if there is no special backend support for creating buffers,
-                                              // use the fallback buffer
-                                              fallbackBuffer.resize(numElements);
-                                              return std::shared_ptr<float_64>{fallbackBuffer.data(), [](auto const*) {
-                                                                               }};
-                                          })
-                                          .currentBuffer();
+                                auto span = mesh_amp[dir]
+                                                .storeChunk<double>(
+                                                    offset_amp,
+                                                    extent_amp,
+                                                    [&fallbackBuffer](size_t numElements)
+                                                    {
+                                                        // if there is no special backend support for creating buffers,
+                                                        // use the fallback buffer
+                                                        fallbackBuffer.resize(numElements);
+                                                        return std::shared_ptr<float_64>{
+                                                            fallbackBuffer.data(),
+                                                            [](auto const*) {}};
+                                                    })
+                                                .currentBuffer();
 
                                 // select data
                                 for(uint32_t copyIndex = 0; copyIndex < N_tmpBuffer; ++copyIndex)
@@ -971,20 +968,20 @@ namespace picongpu
                             {
                                 // ask openPMD to create a buffer for us
                                 // in some backends (ADIOS2), this allows avoiding memcopies
-                                auto span
-                                    = ::picongpu::openPMD::storeChunkSpan<double>(
-                                          mesh_n[dir],
-                                          offset_n,
-                                          extent_n,
-                                          [&fallbackBuffer](size_t numElements)
-                                          {
-                                              // if there is no special backend support for creating buffers,
-                                              // use the fallback buffer
-                                              fallbackBuffer.resize(numElements);
-                                              return std::shared_ptr<float_64>{fallbackBuffer.data(), [](auto const*) {
-                                                                               }};
-                                          })
-                                          .currentBuffer();
+                                auto span = mesh_n[dir]
+                                                .storeChunk<double>(
+                                                    offset_n,
+                                                    extent_n,
+                                                    [&fallbackBuffer](size_t numElements)
+                                                    {
+                                                        // if there is no special backend support for creating buffers,
+                                                        // use the fallback buffer
+                                                        fallbackBuffer.resize(numElements);
+                                                        return std::shared_ptr<float_64>{
+                                                            fallbackBuffer.data(),
+                                                            [](auto const*) {}};
+                                                    })
+                                                .currentBuffer();
 
                                 // select data
                                 for(uint32_t copyIndex = 0u; copyIndex < parameters::N_observer; ++copyIndex)
@@ -1034,7 +1031,7 @@ namespace picongpu
                         // write actual data
                         ::openPMD::Offset offset_omega = {0, 0, 0};
                         /*
-                         * Here, we don't use storeChunkSpan, since detectorFrequencies
+                         * Here, we don't use span-based storeChunk, since detectorFrequencies
                          * is created and filled upon activation of the plugin,
                          * so it survives beyond the writing of a single dataset.
                          */
@@ -1137,7 +1134,7 @@ namespace picongpu
                                 // calculate the square of the absolute value
                                 // and write to file.
                                 outFile << values[index_omega + index_direction * radiation_frequencies::N_omega]
-                                               .calc_radiation()
+                                               .calcRadiation()
                                         * UNIT_ENERGY * UNIT_TIME
                                         << "\t";
                             }
@@ -1205,27 +1202,25 @@ namespace picongpu
 
                     // Some funny things that make it possible for the kernel to calculate
                     // the absolute position of the particles
-                    DataSpace<simDim> localSize(cellDescription->getGridLayout().getDataSpaceWithoutGuarding());
+                    DataSpace<simDim> localSize(cellDescription->getGridLayout().sizeWithoutGuardND());
                     const uint32_t numSlides = MovingWindow::getInstance().getSlideCounter(currentStep);
                     const SubGrid<simDim>& subGrid = Environment<simDim>::get().SubGrid();
                     DataSpace<simDim> globalOffset(subGrid.getLocalDomain().offset);
                     globalOffset.y() += (localSize.y() * numSlides);
 
-                    auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
-
                     // PIC-like kernel call of the radiation kernel
-                    PMACC_LOCKSTEP_KERNEL(KernelRadiationParticles{}, workerCfg)
-                    (DataSpace<2>(gridDim_rad, numJobs))(
-                        /*Pointer to particles memory on the device*/
-                        particles->getDeviceParticlesBox(),
+                    PMACC_LOCKSTEP_KERNEL(KernelRadiationParticles{})
+                        .config(DataSpace<2>(gridDim_rad, numJobs), *particles)(
+                            /*Pointer to particles memory on the device*/
+                            particles->getDeviceParticlesBox(),
 
-                        /*Pointer to memory of radiated amplitude on the device*/
-                        radiation->getDeviceBuffer().getDataBox(),
-                        globalOffset,
-                        currentStep,
-                        *cellDescription,
-                        freqFkt,
-                        subGrid.getGlobalDomain().size);
+                            /*Pointer to memory of radiated amplitude on the device*/
+                            radiation->getDeviceBuffer().getDataBox(),
+                            globalOffset,
+                            currentStep,
+                            *cellDescription,
+                            freqFkt,
+                            subGrid.getGlobalDomain().size);
 
                     if(dumpPeriod != 0 && currentStep % dumpPeriod == 0)
                     {

@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -26,7 +26,7 @@
 #include "pmacc/types.hpp"
 
 /* select namespace depending on __CUDA_ARCH__ compiler flag*/
-#if(CUPLA_DEVICE_COMPILE == 1)
+#if(PMACC_DEVICE_COMPILE == 1)
 #    define PMACC_USING_STATIC_CONST_VECTOR_NAMESPACE(id)                                                             \
         using namespace PMACC_JOIN(pmacc_static_const_vector_device, id)
 #else
@@ -80,12 +80,7 @@
             }                                                                                                         \
         };                                                                                                            \
         /*define a const vector type, ConstArrayStorage is used as Storage policy*/                                   \
-        typedef const pmacc::math::Vector<                                                                            \
-            Type,                                                                                                     \
-            Dim,                                                                                                      \
-            pmacc::math::StandardAccessor,                                                                            \
-            pmacc::math::StandardNavigator,                                                                           \
-            ConstArrayStorage<Type, Dim>>                                                                             \
+        typedef const pmacc::math::Vector<Type, Dim, pmacc::math::IdentityNavigator, ConstArrayStorage<Type, Dim>>    \
             PMACC_JOIN(Name, _t);                                                                                     \
     } /* namespace pmacc_static_const_storage + id */                                                                 \
     using namespace PMACC_JOIN(pmacc_static_const_storage, id)

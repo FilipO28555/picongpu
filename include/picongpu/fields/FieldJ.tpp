@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -62,7 +62,7 @@ namespace picongpu
         , buffer(cellDescription.getGridLayout())
         , fieldJrecv(nullptr)
     {
-        const DataSpace<simDim> coreBorderSize = cellDescription.getGridLayout().getDataSpaceWithoutGuarding();
+        const DataSpace<simDim> coreBorderSize = cellDescription.getGridLayout().sizeWithoutGuardND();
 
         /* cell margins the current might spread to due to particle shapes */
         using AllSpeciesWithCurrent =

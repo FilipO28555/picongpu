@@ -1,4 +1,4 @@
-/* Copyright 2022-2023 Sergei Bastrakov
+/* Copyright 2022-2024 Sergei Bastrakov, Julian Lenz
  *
  * This file is part of PIConGPU.
  *
@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 
 namespace picongpu
 {
@@ -43,6 +45,11 @@ namespace picongpu
                     HINLINE static std::string getName()
                     {
                         return "None";
+                    }
+
+                    static nlohmann::json metadata()
+                    {
+                        return nlohmann::json::object();
                     }
                 };
             } // namespace profiles

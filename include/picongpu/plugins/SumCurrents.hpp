@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -26,7 +26,6 @@
 #include "picongpu/plugins/ILightweightPlugin.hpp"
 
 #include <pmacc/dataManagement/DataConnector.hpp>
-#include <pmacc/dimensions/DataSpaceOperations.hpp>
 #include <pmacc/lockstep/lockstep.hpp>
 #include <pmacc/mappings/kernel/AreaMapping.hpp>
 #include <pmacc/memory/shared/Allocate.hpp>
@@ -52,28 +51,24 @@ namespace picongpu
 
             PMACC_SMEM(worker, sh_sumJ, float3_X);
 
-            const DataSpace<simDim> threadIndex(cupla::threadIdx(worker.getAcc()));
-
             auto onlyMaster = lockstep::makeMaster(worker);
 
             onlyMaster([&]() { sh_sumJ = float3_X::create(0.0); });
 
             worker.sync();
 
-            const DataSpace<simDim> superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            const DataSpace<simDim> superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             constexpr uint32_t cellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
             lockstep::makeForEach<cellsPerSuperCell>(worker)(
-                [&](uint32_t const linearIdx)
+                [&](int32_t const linearIdx)
                 {
-                    const auto cellIdxInSupercell
-                        = DataSpaceOperations<simDim>::template map<SuperCellSize>(linearIdx);
+                    const auto cellIdxInSupercell = pmacc::math::mapToND(SuperCellSize::toRT(), linearIdx);
                     const DataSpace<simDim> cell(superCellIdx * SuperCellSize::toRT() + cellIdxInSupercell);
                     const float3_X myJ = fieldJ(cell);
-                    cupla::atomicAdd(worker.getAcc(), &(sh_sumJ.x()), myJ.x(), ::alpaka::hierarchy::Threads{});
-                    cupla::atomicAdd(worker.getAcc(), &(sh_sumJ.y()), myJ.y(), ::alpaka::hierarchy::Threads{});
-                    cupla::atomicAdd(worker.getAcc(), &(sh_sumJ.z()), myJ.z(), ::alpaka::hierarchy::Threads{});
+                    alpaka::atomicAdd(worker.getAcc(), &(sh_sumJ.x()), myJ.x(), ::alpaka::hierarchy::Threads{});
+                    alpaka::atomicAdd(worker.getAcc(), &(sh_sumJ.y()), myJ.y(), ::alpaka::hierarchy::Threads{});
+                    alpaka::atomicAdd(worker.getAcc(), &(sh_sumJ.z()), myJ.z(), ::alpaka::hierarchy::Threads{});
                 });
 
             worker.sync();
@@ -81,9 +76,9 @@ namespace picongpu
             onlyMaster(
                 [&]()
                 {
-                    cupla::atomicAdd(worker.getAcc(), &(gCurrent->x()), sh_sumJ.x(), ::alpaka::hierarchy::Blocks{});
-                    cupla::atomicAdd(worker.getAcc(), &(gCurrent->y()), sh_sumJ.y(), ::alpaka::hierarchy::Blocks{});
-                    cupla::atomicAdd(worker.getAcc(), &(gCurrent->z()), sh_sumJ.z(), ::alpaka::hierarchy::Blocks{});
+                    alpaka::atomicAdd(worker.getAcc(), &(gCurrent->x()), sh_sumJ.x(), ::alpaka::hierarchy::Blocks{});
+                    alpaka::atomicAdd(worker.getAcc(), &(gCurrent->y()), sh_sumJ.y(), ::alpaka::hierarchy::Blocks{});
+                    alpaka::atomicAdd(worker.getAcc(), &(gCurrent->z()), sh_sumJ.z(), ::alpaka::hierarchy::Blocks{});
                 });
         }
     };
@@ -170,9 +165,10 @@ namespace picongpu
 
             auto const mapper = makeAreaMapper<CORE + BORDER>(*cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg(SuperCellSize{});
-            PMACC_LOCKSTEP_KERNEL(KernelSumCurrents{}, workerCfg)
-            (mapper.getGridDim())(fieldJ->getDeviceDataBox(), sumcurrents->getDeviceBuffer().getBasePointer(), mapper);
+            PMACC_LOCKSTEP_KERNEL(KernelSumCurrents{})
+                .config(
+                    mapper.getGridDim(),
+                    SuperCellSize{})(fieldJ->getDeviceDataBox(), sumcurrents->getDeviceBuffer().data(), mapper);
 
             sumcurrents->deviceToHost();
             return sumcurrents->getHostBuffer().getDataBox()[0];

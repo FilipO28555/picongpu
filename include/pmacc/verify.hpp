@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -61,7 +61,7 @@ namespace pmacc
         if(!isValid)
         {
             printf(std::forward<T_PrintfArgs>(printfArgs)...);
-#if(CUPLA_DEVICE_COMPILE == 1)
+#if(PMACC_DEVICE_COMPILE == 1)
 #    if BOOST_COMP_HIP
             __builtin_trap();
 #    elif BOOST_LANG_CUDA

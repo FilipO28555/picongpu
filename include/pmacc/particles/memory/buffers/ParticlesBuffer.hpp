@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -280,7 +280,7 @@ namespace pmacc
         DataSpace<DIM> getSuperCellsCount()
         {
             PMACC_ASSERT(superCells != nullptr);
-            return superCells->getGridLayout().getDataSpace();
+            return superCells->getGridLayout().sizeND();
         }
 
         /**
@@ -324,16 +324,17 @@ namespace pmacc
         uint32_t exchangeMemoryIndexerTag;
     };
 
-    namespace lockstep
+    namespace lockstep::traits
     {
-        //! Specialization to create a lockstep worker configuration out of a particle buffer.
-        template<typename T_ParticleDescription, typename T_SuperCellSize, typename T_DeviceHeap, unsigned DIM>
-        HDINLINE auto makeWorkerCfg(ParticlesBuffer<T_ParticleDescription, T_SuperCellSize, T_DeviceHeap, DIM> const&)
+        //! Specialization to create a lockstep block configuration out of a particle buffer.
+        template<typename T_ParticleDescription, typename T_SuperCellSize, typename T_DeviceHeap, unsigned T_dim>
+        struct MakeBlockCfg<ParticlesBuffer<T_ParticleDescription, T_SuperCellSize, T_DeviceHeap, T_dim>>
+            : std::true_type
         {
-            return makeWorkerCfg<
-                ParticlesBuffer<T_ParticleDescription, T_SuperCellSize, T_DeviceHeap, DIM>::FrameType::frameSize>();
-        }
-
-    } // namespace lockstep
+            static constexpr uint32_t frameSize
+                = ParticlesBuffer<T_ParticleDescription, T_SuperCellSize, T_DeviceHeap, T_dim>::FrameType::frameSize;
+            using type = BlockCfg<math::CT::UInt32<frameSize>>;
+        };
+    } // namespace lockstep::traits
 
 } // namespace pmacc

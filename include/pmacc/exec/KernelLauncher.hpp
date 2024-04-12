@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <cstdint>
 
 namespace pmacc::exec::detail
 {
@@ -31,6 +32,6 @@ namespace pmacc::exec::detail
      *
      * @tparam T_Kernel pmacc Kernel object
      */
-    template<typename T_Kernel>
+    template<typename T_Kernel, uint32_t T_dim>
     struct KernelLauncher;
 } // namespace pmacc::exec::detail

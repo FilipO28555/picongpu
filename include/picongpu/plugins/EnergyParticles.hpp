@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -94,8 +94,7 @@ namespace picongpu
 
             worker.sync();
 
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             auto forEachParticle = pmacc::particles::algorithm::acc::makeForEach(worker, pb, superCellIdx);
 
@@ -129,8 +128,8 @@ namespace picongpu
                 });
 
             // each virtual thread adds the energies to the shared memory
-            cupla::atomicAdd(worker.getAcc(), &shEnergyKin, localEnergyKin, ::alpaka::hierarchy::Threads{});
-            cupla::atomicAdd(worker.getAcc(), &shEnergy, localEnergy, ::alpaka::hierarchy::Threads{});
+            alpaka::atomicAdd(worker.getAcc(), &shEnergyKin, localEnergyKin, ::alpaka::hierarchy::Threads{});
+            alpaka::atomicAdd(worker.getAcc(), &shEnergy, localEnergy, ::alpaka::hierarchy::Threads{});
 
             // wait that all virtual threads updated the shared memory energies
             worker.sync();
@@ -141,13 +140,13 @@ namespace picongpu
                 [&]()
                 {
                     // add kinetic energy
-                    cupla::atomicAdd(
+                    alpaka::atomicAdd(
                         worker.getAcc(),
                         &(gEnergy[0]),
                         static_cast<float_64>(shEnergyKin),
                         ::alpaka::hierarchy::Blocks{});
                     // add total energy
-                    cupla::atomicAdd(
+                    alpaka::atomicAdd(
                         worker.getAcc(),
                         &(gEnergy[1]),
                         static_cast<float_64>(shEnergy),
@@ -351,8 +350,7 @@ namespace picongpu
 
             auto const mapper = makeAreaMapper<AREA>(*m_cellDescription);
 
-            auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
-            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelEnergyParticles{}, workerCfg)(mapper.getGridDim());
+            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelEnergyParticles{}).config(mapper.getGridDim(), *particles);
             auto binaryKernel = std::bind(
                 kernel,
                 particles->getDeviceParticlesBox(),
@@ -375,7 +373,7 @@ namespace picongpu
             reduce(
                 pmacc::math::operation::Add(),
                 reducedEnergy,
-                gEnergy->getHostBuffer().getBasePointer(),
+                gEnergy->getHostBuffer().data(),
                 2,
                 mpi::reduceMethods::Reduce());
 

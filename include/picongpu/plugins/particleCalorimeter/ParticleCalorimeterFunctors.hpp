@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -145,7 +145,7 @@ namespace picongpu
                     energyBin = energyBin > 0 ? energyBin : 0;
                 }
 
-                cupla::atomicAdd(
+                alpaka::atomicAdd(
                     worker.getAcc(),
                     &this->m_calorimeterBox(DataSpace<DIM3>(yawBin, pitchBin, energyBin)),
                     energy * normedWeighting,

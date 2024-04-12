@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -66,7 +66,7 @@ namespace pmacc
                     T_Type u1 = UniformRng::operator()(worker, state);
                     T_Type u2 = UniformRng::operator()(worker, state) * valueTwoPI;
 
-                    T_Type s = cupla::math::sqrt(T_Type(-2.0) * cupla::math::log(u1));
+                    T_Type s = pmacc::math::sqrt(T_Type(-2.0) * pmacc::math::log(u1));
 
                     T_Type firstRngNumber;
                     pmacc::math::sincos(u2, firstRngNumber, secondRngNumber);

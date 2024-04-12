@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -48,7 +48,7 @@ namespace pmacc
                 }
             };
 
-#if CUPLA_DEVICE_COMPILE == 1 && (BOOST_LANG_CUDA || BOOST_COMP_HIP)
+#if PMACC_DEVICE_COMPILE == 1 && (BOOST_LANG_CUDA || BOOST_COMP_HIP)
             /**
              * Trait that returns whether an optimized version of AtomicAllInc
              * exists for Kepler architectures (and up)
@@ -78,6 +78,7 @@ namespace pmacc
              * http://devblogs.nvidia.com/parallelforall/cuda-pro-tip-optimized-filtering-warp-aggregated-atomics/
              * (author: Andrew Adinetz, date: October 1th, 2014)
              *
+             * For modern architectures see https://developer.nvidia.com/blog/using-cuda-warp-level-primitives/ *
              */
             template<typename T_Type>
             struct AtomicAllIncKepler<T_Type, true>
@@ -85,6 +86,10 @@ namespace pmacc
                 template<typename T_Acc, typename T_Hierarchy>
                 HDINLINE T_Type operator()(const T_Acc& acc, T_Type* ptr, const T_Hierarchy& hierarchy)
                 {
+                    /* @attention mask must be used in any warp operation which supports a mask.
+                     * On CUDA calling activemask again could result int different results because warps are not
+                     * implicitly synchronized. This is different to HIP and old CUDA GPUs before Volta.
+                     */
                     const auto mask = alpaka::warp::activemask(acc);
                     const auto leader = alpaka::ffs(acc, static_cast<std::make_signed_t<decltype(mask)>>(mask)) - 1;
 
@@ -97,7 +102,7 @@ namespace pmacc
                             ptr,
                             static_cast<T_Type>(alpaka::popcount(acc, mask)),
                             hierarchy);
-                    result = warpBroadcast(result, leader);
+                    result = warpBroadcast(mask, result, leader);
                     /* Add offset per thread */
                     return result
                         + static_cast<T_Type>(
@@ -131,7 +136,7 @@ namespace pmacc
             struct AtomicAllInc<T_Type, true> : public AtomicAllIncKepler<T_Type>
             {
             };
-#endif // CUPLA_DEVICE_COMPILE == 1
+#endif // PMACC_DEVICE_COMPILE == 1
 
         } // namespace detail
 
@@ -163,9 +168,9 @@ namespace pmacc
              * The id provider for particles is the only code where atomicAllInc is used without an accelerator.
              * @todo remove the unsafe faked accelerator
              */
-            pmacc::memory::Array<cupla::AccThreadSeq, 1> fakeAcc;
+            pmacc::memory::Array<std::byte, sizeof(pmacc::Acc<DIM1>)> fakeAcc(std::byte(0));
             return detail::AtomicAllInc<T, (PMACC_CUDA_ARCH >= 300 || BOOST_COMP_HIP)>()(
-                fakeAcc[0],
+                *reinterpret_cast<pmacc::Acc<DIM1>*>(fakeAcc.data()),
                 ptr,
                 ::alpaka::hierarchy::Grids());
         }
@@ -191,7 +196,7 @@ namespace pmacc
             const T_Type value,
             const T_Hierarchy& hierarchy)
         {
-#if CUPLA_DEVICE_COMPILE == 1 && (BOOST_LANG_CUDA || BOOST_COMP_HIP)
+#if PMACC_DEVICE_COMPILE == 1 && (BOOST_LANG_CUDA || BOOST_COMP_HIP)
             const auto mask = alpaka::warp::activemask(worker.getAcc());
             const auto leader
                 = alpaka::ffs(worker.getAcc(), static_cast<std::make_signed_t<decltype(mask)>>(mask)) - 1;

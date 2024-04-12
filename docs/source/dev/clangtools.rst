@@ -28,7 +28,7 @@ For example, enable the *OpenMP* backend via:
 .. code-block:: bash
 
    # in an example
-   mkdir .build
+   mkdir build
    cd build
 
    pic-configure -c"-DALPAKA_ACC_CPU_B_OMP2_T_SEQ_ENABLE=ON" ..
@@ -50,4 +50,3 @@ If a proper version of ``clang-tidy`` is found, we add a new ``clang-tidy`` buil
 
 .. [ClangTools]
         Online (2017), https://clang.llvm.org/docs/ClangTools.html
-

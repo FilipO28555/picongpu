@@ -10,7 +10,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -155,7 +155,7 @@ namespace picongpu
     public:
         void restart(uint32_t restartStep, const std::string& restartDirectory) override
         {
-            HBufCalorimeter hBufLeftParsCalorimeter(this->dBufLeftParsCalorimeter->getDataSpace());
+            HBufCalorimeter hBufLeftParsCalorimeter(this->dBufLeftParsCalorimeter->capacityND());
 
             pmacc::GridController<simDim>& gridCon = pmacc::Environment<simDim>::get().GridController();
             pmacc::CommunicatorMPI<simDim>& comm = gridCon.getCommunicator();
@@ -175,7 +175,7 @@ namespace picongpu
                 ::openPMD::Extent extent = dataset.getExtent();
                 ::openPMD::Offset offset(extent.size(), 0);
                 dataset.loadChunk(
-                    std::shared_ptr<float_X>{hBufLeftParsCalorimeter.getPointer(), [](auto const*) {}},
+                    std::shared_ptr<float_X>{hBufLeftParsCalorimeter.data(), [](auto const*) {}},
                     offset,
                     extent);
 
@@ -187,16 +187,16 @@ namespace picongpu
                 /** @todo use foreach to walk over all elements, we can do this for loop only because we know that host
                  * buffer has no pitch
                  */
-                auto* dataPtr = hBufLeftParsCalorimeter.getPointer();
-                for(size_t i = 0u; i < hBufLeftParsCalorimeter.getCurrentSize(); ++i)
+                auto* dataPtr = hBufLeftParsCalorimeter.data();
+                for(size_t i = 0u; i < hBufLeftParsCalorimeter.size(); ++i)
                     dataPtr[i] /= float_X(numRanks);
             }
 
             // avoid deadlock between not finished pmacc tasks and mpi blocking collectives
             eventSystem::getTransactionEvent().waitForFinished();
             MPI_CHECK(MPI_Bcast(
-                hBufLeftParsCalorimeter.getPointer(),
-                hBufLeftParsCalorimeter.getCurrentSize() * sizeof(float_X),
+                hBufLeftParsCalorimeter.data(),
+                hBufLeftParsCalorimeter.size() * sizeof(float_X),
                 MPI_CHAR,
                 0, /* rank 0 */
                 comm.getMPIComm()));
@@ -213,7 +213,7 @@ namespace picongpu
              */
             Environment<simDim>::get().Filesystem().createDirectoryWithPermissions(
                 checkpointDirectory + "/" + this->foldername);
-            auto dataSize = this->dBufLeftParsCalorimeter->getDataSpace();
+            auto dataSize = this->dBufLeftParsCalorimeter->capacityND();
             HBufCalorimeter hBufLeftParsCalorimeter(dataSize);
             HBufCalorimeter hBufTotal(dataSize);
 
@@ -224,9 +224,9 @@ namespace picongpu
             /* mpi reduce */
             (*allGPU_reduce)(
                 pmacc::math::operation::Add(),
-                hBufTotal.getPointer(),
-                hBufLeftParsCalorimeter.getPointer(),
-                hBufTotal.getCurrentSize(),
+                hBufTotal.data(),
+                hBufLeftParsCalorimeter.data(),
+                hBufTotal.size(),
                 mpi::reduceMethods::Reduce());
 
             if(!this->allGPU_reduce->hasResult(mpi::reduceMethods::Reduce()))
@@ -248,7 +248,7 @@ namespace picongpu
 
             dataset.resetDataset({::openPMD::determineDatatype<float_X>(), bufferExtent});
             dataset.storeChunk(
-                std::shared_ptr<float_X>{hBufTotal.getPointer(), [](auto const*) {}},
+                std::shared_ptr<float_X>{hBufTotal.data(), [](auto const*) {}},
                 bufferOffset,
                 bufferExtent);
             writeMeta(series, mesh, dataset, currentStep);
@@ -369,15 +369,15 @@ namespace picongpu
 
             auto offset = twoDimensional(::openPMD::Offset{0, 0, 0});
 
-            auto dataSize = this->hBufTotalCalorimeter->getCurrentDataSpace();
-            auto dataSize64Bit = precisionCast<size_t>(dataSize);
+            auto dataSizeND = this->hBufTotalCalorimeter->sizeND();
+            auto dataSize64Bit = precisionCast<size_t>(dataSizeND);
             auto extent = twoDimensional(::openPMD::Extent{dataSize64Bit.z(), dataSize64Bit.y(), dataSize64Bit.x()});
 
             auto mesh = series.iterations[currentStep].meshes["calorimeter"];
             auto calorimeter = mesh[::openPMD::RecordComponent::SCALAR];
             calorimeter.resetDataset({::openPMD::determineDatatype<float_X>(), extent});
             calorimeter.storeChunk(
-                std::shared_ptr<float_X>{this->hBufTotalCalorimeter->getPointer(), [](auto const*) {}},
+                std::shared_ptr<float_X>{this->hBufTotalCalorimeter->data(), [](auto const*) {}},
                 std::move(offset),
                 std::move(extent));
 
@@ -566,9 +566,8 @@ namespace picongpu
             auto beginInternalCellsLocal = pmacc::DataSpace<simDim>::create(0);
             auto endInternalCellsLocal = beginInternalCellsLocal + subGrid.getLocalDomain().size;
 
-            auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
 
-            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelParticleCalorimeter{}, workerCfg)(grid);
+            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelParticleCalorimeter{}).config(grid, *particles);
             auto unaryKernel = std::bind(
                 kernel,
                 particles->getDeviceParticlesBox(),
@@ -589,9 +588,9 @@ namespace picongpu
             /* mpi reduce */
             (*allGPU_reduce)(
                 pmacc::math::operation::Add(),
-                this->hBufTotalCalorimeter->getPointer(),
-                this->hBufCalorimeter->getPointer(),
-                this->hBufCalorimeter->getCurrentSize(),
+                this->hBufTotalCalorimeter->data(),
+                this->hBufCalorimeter->data(),
+                this->hBufCalorimeter->size(),
                 mpi::reduceMethods::Reduce());
 
             if(!this->allGPU_reduce->hasResult(mpi::reduceMethods::Reduce()))
@@ -632,9 +631,8 @@ namespace picongpu
             auto const beginExternalCellsLocal = beginExternalCellsTotal - shiftTotaltoLocal;
             auto const endExternalCellsLocal = endExternalCellsTotal - shiftTotaltoLocal;
 
-            auto workerCfg = lockstep::makeWorkerCfg<ParticlesType::FrameType::frameSize>();
 
-            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelParticleCalorimeter{}, workerCfg)(grid);
+            auto kernel = PMACC_LOCKSTEP_KERNEL(KernelParticleCalorimeter{}).config(grid, *particles);
             auto unaryKernel = std::bind(
                 kernel,
                 particles->getDeviceParticlesBox(),

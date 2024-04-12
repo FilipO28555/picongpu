@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -25,10 +25,10 @@
 #include "pmacc/algorithms/math/defines/bessel.hpp"
 #include "pmacc/algorithms/math/defines/cross.hpp"
 #include "pmacc/algorithms/math/defines/dot.hpp"
-#include "pmacc/algorithms/math/defines/exp.hpp"
 #include "pmacc/algorithms/math/defines/floatingPoint.hpp"
 #include "pmacc/algorithms/math/defines/l2norm.hpp"
 #include "pmacc/algorithms/math/defines/modf.hpp"
 #include "pmacc/algorithms/math/defines/norm.hpp"
 #include "pmacc/algorithms/math/defines/pi.hpp"
 #include "pmacc/algorithms/math/defines/trigo.hpp"
+#include "pmacc/math/math.hpp"

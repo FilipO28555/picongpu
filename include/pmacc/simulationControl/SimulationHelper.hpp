@@ -11,7 +11,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -122,7 +122,7 @@ namespace pmacc
         /**
          * Begin the simulation.
          */
-        void startSimulation();
+        virtual void startSimulation();
 
         void pluginRegisterHelp(po::options_description& desc) override;
 

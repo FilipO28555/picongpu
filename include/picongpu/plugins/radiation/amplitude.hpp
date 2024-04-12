@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -152,7 +152,7 @@ namespace picongpu
                 /** calculate radiation from *this amplitude
                  *
                  * Returns: \f$\frac{d^2 I}{d \Omega d \omega} = const*Amplitude^2\f$ */
-                HDINLINE picongpu::float_64 calc_radiation(void)
+                HDINLINE picongpu::float_64 calcRadiation(void)
                 {
                     // const SI factor radiation
                     const picongpu::float_64 factor = 1.0

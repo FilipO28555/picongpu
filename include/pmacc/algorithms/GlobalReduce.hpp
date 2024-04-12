@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -36,8 +36,6 @@ namespace pmacc
         {
         public:
             /** Constructor
-             *
-             * @attetion Don't create a instance before you have set you cupla device!
              *
              * @param byte how many bytes in global gpu memory can be reserved for the reduction algorithm
              * @param sharedMemByte limit the usage of shared memory per block on gpu

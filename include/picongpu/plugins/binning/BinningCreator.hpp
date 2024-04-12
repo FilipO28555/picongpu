@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -22,6 +22,8 @@
 #include "picongpu/plugins/binning/Binner.hpp"
 #include "picongpu/plugins/binning/BinningData.hpp"
 
+#include <memory>
+
 namespace picongpu
 {
     namespace plugins::binning
@@ -33,19 +35,19 @@ namespace picongpu
         {
         public:
             MappingDesc* cellDescription;
-            std::vector<std::unique_ptr<INotify>>& binnerVector;
+            std::vector<std::unique_ptr<IPlugin>>& binnerVector;
 
         public:
-            BinningCreator(std::vector<std::unique_ptr<INotify>>& binVec, MappingDesc* cellDesc)
+            BinningCreator(std::vector<std::unique_ptr<IPlugin>>& binVec, MappingDesc* cellDesc)
                 : cellDescription{cellDesc}
                 , binnerVector{binVec}
             {
             }
 
-
             /**
              * Creates a binner from user input and adds it to the vector of all binners
-             * @param binnerOutputName filename for openPMD output
+             * @param binnerOutputName filename for openPMD output. It must be unique or will cause overwrites during
+             * data dumps and undefined behaviour during restarts
              * @param axisTupleObject tuple holding the axes
              * @param speciesTupleObject tuple holding the species to do the binning with
              * @param depositionData functorDescription of the deposited quantity
@@ -56,33 +58,28 @@ namespace picongpu
              * @param writeOpenPMDFunctor Functor to write out user specified openPMD data
              */
             template<typename TAxisTuple, typename TSpeciesTuple, typename TDepositionData>
-            void addBinner(
+            auto addBinner(
                 std::string binnerOutputName,
                 TAxisTuple axisTupleObject,
                 TSpeciesTuple speciesTupleObject,
                 TDepositionData depositionData,
-                std::string notifyPeriod = "1",
-                uint32_t dumpPeriod = 0u,
-                bool timeAveraging = true,
-                bool normalizeByBinVolume = true,
                 std::function<void(::openPMD::Series& series, ::openPMD::Iteration& iteration, ::openPMD::Mesh& mesh)>
                     writeOpenPMDFunctor
                 = [](::openPMD::Series& series, ::openPMD::Iteration& iteration, ::openPMD::Mesh& mesh) {})
+                -> BinningData<TAxisTuple, TSpeciesTuple, TDepositionData>&
             {
                 auto bd = BinningData<TAxisTuple, TSpeciesTuple, TDepositionData>(
                     binnerOutputName,
                     axisTupleObject,
                     speciesTupleObject,
                     depositionData,
-                    notifyPeriod,
-                    dumpPeriod,
-                    timeAveraging,
-                    normalizeByBinVolume,
                     writeOpenPMDFunctor);
                 auto binner = std::make_unique<Binner<BinningData<TAxisTuple, TSpeciesTuple, TDepositionData>>>(
                     bd,
                     cellDescription);
+                auto& res = binner->binningData;
                 binnerVector.emplace_back(std::move(binner));
+                return res;
             }
         };
     } // namespace plugins::binning

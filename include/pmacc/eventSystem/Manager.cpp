@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -35,9 +35,7 @@ namespace pmacc
 {
     Manager::~Manager()
     {
-        CUDA_CHECK_NO_EXCEPT(cuplaGetLastError());
         waitForAllTasks();
-        CUDA_CHECK_NO_EXCEPT(cuplaGetLastError());
     }
 
     bool Manager::execute(id_t taskToWait)

@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -68,8 +68,7 @@ namespace pmacc
             constexpr uint32_t dim = T_Mapping::Dim;
 
             PMACC_SMEM(worker, counter, int);
-            DataSpace<dim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<dim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<dim> const superCellIdx(mapper.getSuperCellIndex(DataSpace<dim>(worker.blockDomIdxND())));
 
             auto onlyMaster = lockstep::makeMaster(worker);
 
@@ -101,7 +100,7 @@ namespace pmacc
 
             onlyMaster(
                 [&]() {
-                    cupla::atomicAdd(
+                    alpaka::atomicAdd(
                         worker.getAcc(),
                         gCounter,
                         static_cast<uint64_cu>(counter),
@@ -133,15 +132,14 @@ namespace pmacc
             GridBuffer<uint64_cu, DIM1> counter(DataSpace<DIM1>(1));
 
             auto const mapper = makeAreaMapper<AREA>(cellDescription);
-            auto workerCfg = lockstep::makeWorkerCfg<PBuffer::FrameType::frameSize>();
 
-            PMACC_LOCKSTEP_KERNEL(KernelCountParticles{}, workerCfg)
-            (mapper.getGridDim())(
-                buffer.getDeviceParticlesBox(),
-                counter.getDeviceBuffer().getBasePointer(),
-                filter,
-                mapper,
-                parFilter);
+            PMACC_LOCKSTEP_KERNEL(KernelCountParticles{})
+                .config(mapper.getGridDim(), buffer)(
+                    buffer.getDeviceParticlesBox(),
+                    counter.getDeviceBuffer().data(),
+                    filter,
+                    mapper,
+                    parFilter);
 
             counter.deviceToHost();
             return *(counter.getHostBuffer().getDataBox());

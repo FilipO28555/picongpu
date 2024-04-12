@@ -10,7 +10,7 @@
  *
  * PMacc is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License and the GNU Lesser General Public License
  * for more details.
  *
@@ -27,7 +27,7 @@
 #include <cassert>
 
 // disabled for no-debug mode or for the device compile path
-#if defined(NDEBUG) || (CUPLA_DEVICE_COMPILE == 1)
+#if defined(NDEBUG) || (PMACC_DEVICE_COMPILE == 1)
 
 /* `(void)0` force a semicolon after the macro function */
 #    define PMACC_ASSERT(expr) ((void) 0)
@@ -58,7 +58,7 @@
 #endif
 
 // disabled for no-debug mode or for the host compile path
-#if defined(NDEBUG) || (CUPLA_DEVICE_COMPILE == 0)
+#if defined(NDEBUG) || (PMACC_DEVICE_COMPILE == 0)
 
 /* `(void)0` force a semicolon after the macro function */
 #    define PMACC_DEVICE_ASSERT(expr) ((void) 0)

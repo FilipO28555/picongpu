@@ -9,7 +9,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -128,7 +128,7 @@ namespace picongpu
                  *
                  * @param worker lockstep worker
                  * @param blockCell relative offset (in cells) to the local domain plus the guarding cells
-                 * @param workerCfg configuration of the worker
+                 * @param blockCfg configuration of the worker
                  */
                 template<typename T_Worker>
                 DINLINE void collectiveInit(const T_Worker& worker, const DataSpace<simDim>& blockCell)
@@ -160,17 +160,24 @@ namespace picongpu
                  *         and initialize possible prerequisites for ionization, like e.g. random number generator.
                  *
                  * This function will be called inline on the device which must happen BEFORE threads diverge
-                 * during loop execution. The reason for this is the `cupla::__syncthreads( acc )` call which is
+                 * during loop execution. The reason for this is the `alpaka::syncBlockThreads( acc )` call which is
                  * necessary after initializing the E-/B-field shared boxes in shared memory.
+                 *
+                 * @param localSuperCellOffset offset (in superCells, without any guards) relative
+                 *                             to the origin of the local domain
+                 * @param rngIdx linear index rng number index within the supercell, valid range[0;numFrameSlots)
                  */
                 template<typename T_Worker>
                 DINLINE void init(
-                    T_Worker const& worker,
-                    const DataSpace<simDim>& blockCell,
-                    const DataSpace<simDim>& localCellOffset)
+                    [[maybe_unused]] T_Worker const& worker,
+                    const DataSpace<simDim>& localSuperCellOffset,
+                    const uint32_t rngIdx)
                 {
-                    /* initialize random number generator with the local cell index in the simulation */
-                    this->randomGen.init(localCellOffset);
+                    auto rngOffset = DataSpace<simDim>::create(0);
+                    rngOffset.x() = rngIdx;
+                    auto numRNGsPerSuperCell = DataSpace<simDim>::create(1);
+                    numRNGsPerSuperCell.x() = FrameType::frameSize;
+                    this->randomGen.init(localSuperCellOffset * numRNGsPerSuperCell + rngOffset);
                 }
 
                 /** Determine number of new macro electrons due to ionization
@@ -187,8 +194,7 @@ namespace picongpu
                     floatD_X pos = particle[position_];
                     const int particleCellIdx = particle[localCellIdx_];
                     /* multi-dim coordinate of the local cell inside the super cell */
-                    DataSpace<TVec::dim> localCell(
-                        DataSpaceOperations<TVec::dim>::template map<TVec>(particleCellIdx));
+                    DataSpace<TVec::dim> localCell = pmacc::math::mapToND(TVec::toRT(), particleCellIdx);
                     /* interpolation of E- */
                     const picongpu::traits::FieldPosition<fields::CellType, FieldE> fieldPosE;
                     ValueType_E eField = Field2ParticleInterpolation()(cachedE.shift(localCell), pos, fieldPosE());

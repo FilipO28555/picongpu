@@ -11,7 +11,7 @@
  *
  * PIConGPU is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -95,8 +95,7 @@ namespace picongpu
             PMACC_SMEM(worker, srcFrame, SrcFramePtr);
             PMACC_SMEM(worker, destFrame, DestFramePtr);
 
-            DataSpace<simDim> const superCellIdx
-                = mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc())));
+            DataSpace<simDim> const superCellIdx = mapper.getSuperCellIndex(worker.blockDomIdxND());
 
             // offset of the superCell (in cells, without any guards) to the origin of the local domain
             DataSpace<simDim> const localSuperCellOffset = superCellIdx - mapper.getGuardingSuperCells();
@@ -202,8 +201,7 @@ namespace picongpu
             T_ParticleFunctor particleFunctor,
             T_Mapping mapper) const
         {
-            DataSpace<simDim> const superCellIdx(
-                mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))));
+            DataSpace<simDim> const superCellIdx(mapper.getSuperCellIndex(worker.blockDomIdxND()));
 
             // relative offset (in cells) to the supercell (including the guard)
             DataSpace<simDim> const superCellOffset = superCellIdx * SuperCellSize::toRT();
@@ -268,8 +266,7 @@ namespace picongpu
                      */
                     if(mustShiftSupercell == 1)
                     {
-                        pb.getSuperCell(mapper.getSuperCellIndex(DataSpace<simDim>(cupla::blockIdx(worker.getAcc()))))
-                            .setMustShift(true);
+                        pb.getSuperCell(mapper.getSuperCellIndex(worker.blockDomIdxND())).setMustShift(true);
                     }
                 });
         }
@@ -296,7 +293,7 @@ namespace picongpu
             floatD_X pos = particle[position_];
             const int particleCellIdx = particle[localCellIdx_];
 
-            DataSpace<TVec::dim> localCell(DataSpaceOperations<TVec::dim>::template map<TVec>(particleCellIdx));
+            DataSpace<TVec::dim> localCell = pmacc::math::mapToND(TVec::toRT(), particleCellIdx);
 
             const traits::FieldPosition<fields::CellType, FieldE> fieldPosE;
             const traits::FieldPosition<fields::CellType, FieldB> fieldPosB;
