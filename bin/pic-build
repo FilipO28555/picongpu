@@ -47,6 +47,9 @@ help()
 
 cmd_line_args=()
 
+# default number of compile threads. 20 uses a little over 40GB of RAM compiling Bunch Example
+nCompileThreads=20
+
 # show help
 while [[ $# -gt 0 ]] ; do
     case "$1" in
