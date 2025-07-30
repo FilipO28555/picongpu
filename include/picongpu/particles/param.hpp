@@ -31,6 +31,7 @@
 #include "picongpu/param/species.param"
 #include "picongpu/param/speciesDefinition.param"
 #include "picongpu/param/collision.param"
+#include "picongpu/param/fusion.param"
 #include "picongpu/param/fieldSolver.param"
 
 #include "picongpu/unitless/density.unitless"
@@ -39,6 +40,7 @@
 #include "picongpu/unitless/speciesAttributes.unitless"
 #include "picongpu/unitless/speciesDefinition.unitless"
 #include "picongpu/unitless/collision.unitless"
+#include "picongpu/unitless/fusion.unitless"
 // clang-format on
 
 #include "picongpu/particles/atomicPhysics/ionizationPotentialDepression/stage/ApplyIPDIonization.hpp"

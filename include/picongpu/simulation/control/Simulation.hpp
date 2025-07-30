@@ -41,6 +41,7 @@
 #include "picongpu/simulation/control/MovingWindow.hpp"
 #include "picongpu/simulation/stage/AtomicPhysics.hpp"
 #include "picongpu/simulation/stage/Collision.hpp"
+#include "picongpu/simulation/stage/Fusion.hpp"
 #include "picongpu/simulation/stage/CurrentBackground.hpp"
 #include "picongpu/simulation/stage/CurrentDeposition.hpp"
 #include "picongpu/simulation/stage/CurrentInterpolationAndAdditionToEMF.hpp"
@@ -528,6 +529,7 @@ namespace picongpu
             MomentumBackup{}(currentStep);
             CurrentReset{}(currentStep);
             Collision{deviceHeap}(*cellDescription, currentStep);
+            Fusion{deviceHeap}(*cellDescription, currentStep);
             ParticleIonization{*cellDescription}(currentStep);
             (*atomicPhysics)(*cellDescription, currentStep);
             (*synchrotronRadiation)(currentStep);
