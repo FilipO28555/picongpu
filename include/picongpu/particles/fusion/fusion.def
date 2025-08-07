@@ -20,5 +20,4 @@
 #pragma once
 
 #include "picongpu/particles/fusion/Collider.def"
-#include "picongpu/particles/fusion/relativistic/RelativisticCollisionConstLog.def"
-#include "picongpu/particles/fusion/relativistic/RelativisticCollisionDynamicLog.def"
+#include "picongpu/particles/fusion/relativistic/FusionFunctor.def"

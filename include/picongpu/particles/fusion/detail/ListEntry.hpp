@@ -42,7 +42,7 @@ namespace picongpu::particles::fusion
         template<typename T_ParticlesBox, uint32_t T_numElem>
         struct ListEntry
         {
-        private:
+        public:
             // contiguous particle indices
             memory::Array<uint32_t*, T_numElem> particleList;
 
@@ -153,7 +153,7 @@ namespace picongpu::particles::fusion
                         {
                             framePtr[frameId] = frame;
                             frame = pb.getNextFrame(frame);
-                            ++frameId;
+                            frameId++;
                         }
                     });
                 auto forEachCell = lockstep::makeForEach<T_numElem>(worker);
@@ -195,14 +195,14 @@ namespace picongpu::particles::fusion
 
                                 if(particle[multiMask_] != 0 && filter(worker, particle))
                                 {
-                                    auto parLocalIndex = particle[localCellIdx_];
+                                    auto parCellIndex = particle[localCellIdx_];
                                     uint32_t parOffset = alpaka::atomicAdd(
                                         worker.getAcc(),
-                                        &size(parLocalIndex),
+                                        &size(parCellIndex),
                                         1u,
                                         ::alpaka::hierarchy::Threads{});
                                     uint32_t const parInSuperCellIdx = frameIdx * numFrameSlots + linearIdx;
-                                    particleIds(parLocalIndex)[parOffset] = parInSuperCellIdx;
+                                    particleIds(parCellIndex)[parOffset] = parInSuperCellIdx;
                                 }
                             },
                             frameCtx);
@@ -261,7 +261,7 @@ namespace picongpu::particles::fusion
                 return ParticleAccessor(particleIds(cellIdx), size(cellIdx), framePtr);
             }
 
-        private:
+        public:
             /** Allocate a chunk of memory
              *
              * @tparam T_chunkBytes number of bytes, the allocated size will be a multiple of the chunk bytes
@@ -278,7 +278,7 @@ namespace picongpu::particles::fusion
                 uint32_t const allocBytes = numChunks * T_chunkBytes;
                 if(bytes != 0u)
                 {
-                    int const maxTries = 13; // magic number is not performance critical
+                    int const maxTries = 13; // magic number. It's not performance critical
                     for(int numTries = 0; numTries < maxTries; ++numTries)
                     {
 #if (BOOST_LANG_CUDA || BOOST_COMP_HIP)
@@ -315,8 +315,8 @@ namespace picongpu::particles::fusion
                 {
                     if(filter(worker, particle))
                     {
-                        auto parLocalIndex = particle[localCellIdx_];
-                        alpaka::atomicAdd(worker.getAcc(), &nppc[parLocalIndex], 1u, ::alpaka::hierarchy::Threads{});
+                        auto parCellIndex = particle[localCellIdx_];
+                        alpaka::atomicAdd(worker.getAcc(), &nppc[parCellIndex], 1u, ::alpaka::hierarchy::Threads{});
                     }
                 });
         }

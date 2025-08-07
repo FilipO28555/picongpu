@@ -1,5 +1,5 @@
-/* Copyright 2019-2024 Rene Widera, Pawel Ordyna
- *
+/*
+ * Copyright 2019-2024 Rene Widera, Pawel Ordyna
  * This file is part of PIConGPU.
  *
  * PIConGPU is free software: you can redistribute it and/or modify
@@ -13,20 +13,22 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with PIConGPU.
- * If not, see <http://www.gnu.org/licenses/>.
+ * along with PIConGPU. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
+// PIConGPU Includes
 #include "picongpu/defines.hpp"
 #include "picongpu/fields/FieldTmp.hpp"
+#include "picongpu/particles/fusion/detail/Creation.hpp"
 #include "picongpu/particles/fusion/detail/FusionContext.hpp"
 #include "picongpu/particles/fusion/detail/ListEntry.hpp"
 #include "picongpu/particles/fusion/detail/cellDensity.hpp"
 #include "picongpu/particles/fusion/fieldSlots.hpp"
 #include "picongpu/particles/filter/IUnary.def"
 
+// PMacc Includes
 #include <pmacc/lockstep.hpp>
 #include <pmacc/mappings/kernel/AreaMapping.hpp>
 #include <pmacc/math/Vector.hpp>
@@ -38,415 +40,567 @@
 #include <pmacc/random/RNGProvider.hpp>
 #include <pmacc/random/distributions/Uniform.hpp>
 
+// Standard Library Includes
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <utility>
+
 
 namespace picongpu::particles::fusion
 {
-    template<bool useScreeningLength>
+    /**
+     * @brief Handles inter-species particle collisions within a supercell.
+     *
+     * This functor orchestrates the binary collision process between two
+     * reactant particle species, resulting in the creation of two product species.
+     * The process involves preparing particle lists, calculating densities,
+     * shuffling for randomness, executing the collision logic in chunks,
+     * and managing memory for new particles.
+     */
     struct InterCollision
     {
-        HINLINE InterCollision()
-        {
-            constexpr auto numScreeningSpecies
-                = pmacc::mp_size<picongpu::particles::fusion::CollisionScreeningSpecies>::value;
-            PMACC_CASSERT_MSG(
-                _CollisionScreeningSpecies_can_not_be_empty_when_dynamic_coulomb_log_is_used,
-                (useScreeningLength && numScreeningSpecies > 0u) || !useScreeningLength);
-            if constexpr(useScreeningLength)
-            {
-                constexpr uint32_t slot = screeningLengthSlot;
-                DataConnector& dc = Environment<>::get().DataConnector();
-                auto field = dc.get<FieldTmp>(FieldTmp::getUniqueId(slot));
-                screeningLengthSquared = (field->getGridBuffer().getDeviceBuffer().getDataBox());
-            }
-        }
-
-    private:
-        PMACC_ALIGN(screeningLengthSquared, FieldTmp::DataBoxType);
-
-        /* Get the duplication correction for a collision
-         *
-         * A particle duplication is how many times a particle collides in the current time step.
-         * The duplication correction is equal to max(D_0, D_1) where D_0, D_1 are the duplications
-         * of the colliding particles.
-         * In a case of inter-species collisions the particles in the long list collide always once. So that
-         * the correction is the duplication of the particle from the shorter list.
-         *
-         * @param idx the index of the particle in the longer particle list of the cell
-         * @param sizeShort the size of the shorter particle list of the cell
-         * @param sizeLong the size of the longer particle list of the cell
-         */
-        DINLINE static uint32_t duplicationCorrection(
-            uint32_t const idx,
-            uint32_t const sizeShort,
-            uint32_t const sizeLong)
-        {
-            uint32_t duplication_correction(1u);
-            if(sizeLong > sizeShort) // no need for duplications when sizeLong = sizeShort
-            {
-                // Taken from Higginson 2020 DOI: 10.1016/j.jcp.2020.109450
-                duplication_correction = sizeLong / sizeShort;
-                uint32_t modulo = sizeLong % sizeShort;
-                if((idx % sizeShort) < modulo)
-                    duplication_correction += 1u;
-            };
-            return duplication_correction;
-        }
-
     public:
+        HINLINE InterCollision() = default;
+
+        /**
+         * @brief Main operator to execute the inter-species collision kernel.
+         *
+         * @tparam T_Reactant1ParBox Particle box for the first reactant.
+         * @tparam T_Reactant2ParBox Particle box for the second reactant.
+         * @tparam T_Product1ParBox Particle box for the first product.
+         * @tparam T_Product2ParBox Particle box for the second product.
+         * @tparam T_Mapping Maps grid indices to data.
+         * @tparam T_Worker The parallel worker (e.g., a CUDA thread).
+         * @tparam T_DeviceHeapHandle Handle for dynamic memory allocation on the device.
+         * @tparam T_RngHandle Handle for the random number generator.
+         * @tparam T_SrcCollisionFunctor Functor containing the physics of the fusion.
+         * @tparam T_Filter0 Filter for the first reactant species.
+         * @tparam T_Filter1 Filter for the second reactant species.
+         */
         template<
-            typename T_ParBox0,
-            typename T_ParBox1,
+            typename T_Reactant1ParBox,
+            typename T_Reactant2ParBox,
+            typename T_Product1ParBox,
+            typename T_Product2ParBox,
             typename T_Mapping,
             typename T_Worker,
             typename T_DeviceHeapHandle,
             typename T_RngHandle,
             typename T_SrcCollisionFunctor,
             typename T_Filter0,
-            typename T_Filter1,
-            typename T_SumCoulombLogBox,
-            typename T_SumSParamBox,
-            typename T_TimesCollidedBox>
+            typename T_Filter1>
         DINLINE void operator()(
             T_Worker const& worker,
-            T_ParBox0 pb0,
-            T_ParBox1 pb1,
+            T_Reactant1ParBox reactant1Box,
+            T_Reactant2ParBox reactant2Box,
+            T_Product1ParBox product1Box,
+            T_Product2ParBox product2Box,
+            IdGenerator& idGen,
             T_Mapping const mapper,
             T_DeviceHeapHandle deviceHeapHandle,
             T_RngHandle rngHandle,
-            T_SrcCollisionFunctor const srcCollisionFunctor,
+            T_SrcCollisionFunctor const collisionFunctor,
             T_Filter0 filter0,
-            T_Filter1 filter1,
-            T_SumCoulombLogBox sumCoulombLogBox,
-            T_SumSParamBox sumSParamBox,
-            T_TimesCollidedBox timesCollidedBox) const
+            T_Filter1 filter1) const
         {
+            // Type aliases for clarity
             using namespace pmacc::particles::operations;
+            constexpr auto numCellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
 
-            constexpr uint32_t numCellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
+            // --- 1. Initialization ---
 
-            using Frame0 = typename T_ParBox0::FrameType;
-            using Frame1 = typename T_ParBox1::FrameType;
+            DataSpace<simDim> const superCellIdx = mapper.getSuperCellIndex(worker.blockDomIdxND());
+            DataSpace<simDim> const localSuperCellOffset = superCellIdx - mapper.getGuardingSuperCells();
+
+            auto& reactant1SuperCell = reactant1Box.getSuperCell(superCellIdx);
+            auto& reactant2SuperCell = reactant2Box.getSuperCell(superCellIdx);
+
+            // Early exit if there's nothing to collide.
+            if (reactant1SuperCell.getNumParticles() == 0 || reactant2SuperCell.getNumParticles() == 0)
+            {
+                return;
+            }
+            
+            auto onlyMaster = lockstep::makeMaster(worker);
+
+            // --- 2. Shared Memory Allocation ---
 
             PMACC_SMEM(worker, nppc, memory::Array<uint32_t, numCellsPerSuperCell>);
 
-            PMACC_SMEM(worker, parCellList0, detail::ListEntry<T_ParBox0, numCellsPerSuperCell>);
-            PMACC_SMEM(worker, parCellList1, detail::ListEntry<T_ParBox1, numCellsPerSuperCell>);
-            PMACC_SMEM(worker, densityArray0, memory::Array<float_X, numCellsPerSuperCell>);
-            PMACC_SMEM(worker, densityArray1, memory::Array<float_X, numCellsPerSuperCell>);
+            PMACC_SMEM(worker, reactant1CellList, detail::ListEntry<T_Reactant1ParBox, numCellsPerSuperCell>);
+            PMACC_SMEM(worker, reactant2CellList, detail::ListEntry<T_Reactant2ParBox, numCellsPerSuperCell>);
+            PMACC_SMEM(worker, reactant1Density, memory::Array<float_X, numCellsPerSuperCell>);
+            PMACC_SMEM(worker, reactant2Density, memory::Array<float_X, numCellsPerSuperCell>);
 
-            constexpr bool ifAverageLog = !std::is_same<T_SumCoulombLogBox, std::nullptr_t>::value;
-            constexpr bool ifAverageSParam = !std::is_same<T_SumSParamBox, std::nullptr_t>::value;
-            constexpr bool ifTimesCollided = !std::is_same<T_TimesCollidedBox, std::nullptr_t>::value;
-            constexpr bool ifDebug = ifAverageLog && ifAverageSParam && ifTimesCollided;
+            // --- 3. Prepare Particle Data ---
 
-            DataSpace<simDim> const superCellIdx = mapper.getSuperCellIndex(worker.blockDomIdxND());
+            // Initialize RNG for this supercell.
+            initializeRNG(worker, mapper, superCellIdx, rngHandle, localSuperCellOffset);
 
-            auto& superCell0 = pb0.getSuperCell(superCellIdx);
-            uint32_t numParticles0 = superCell0.getNumParticles();
-
-            auto& superCell1 = pb1.getSuperCell(superCellIdx);
-            uint32_t numParticles1 = superCell1.getNumParticles();
-
-            // if we have no particles in one species there is no need to perform any calculations
-            if(numParticles0 == 0 || numParticles1 == 0)
-                return;
-
-            // offset of the superCell (in cells, without any guards) to the
-            // origin of the local domain
-            DataSpace<simDim> const localSuperCellOffset = superCellIdx - mapper.getGuardingSuperCells();
-            auto rngOffset = DataSpace<simDim>::create(0);
-            rngOffset.x() = worker.workerIdx();
-            auto numRNGsPerSuperCell = DataSpace<simDim>::create(1);
-            numRNGsPerSuperCell.x() = numFrameSlots;
-            rngHandle.init(localSuperCellOffset * numRNGsPerSuperCell + rngOffset);
-
+            // Prepare filtered lists of particles in each cell of the supercell.
             auto accFilter0 = filter0(worker, localSuperCellOffset);
             auto accFilter1 = filter1(worker, localSuperCellOffset);
-
             auto forEachCell = lockstep::makeForEach<numCellsPerSuperCell>(worker);
+            prepareList(
+                worker,
+                forEachCell,
+                reactant1Box,
+                superCellIdx,
+                deviceHeapHandle,
+                reactant1CellList,
+                nppc,
+                accFilter0);
 
-            prepareList(worker, forEachCell, pb0, superCellIdx, deviceHeapHandle, parCellList0, nppc, accFilter0);
+            prepareList(
+                worker,
+                forEachCell,
+                reactant2Box,
+                superCellIdx,
+                deviceHeapHandle,
+                reactant2CellList,
+                nppc,
+                accFilter1);
 
-            prepareList(worker, forEachCell, pb1, superCellIdx, deviceHeapHandle, parCellList1, nppc, accFilter1);
 
-            using FramePtr0 = typename T_ParBox0::FramePtr;
-            using FramePtr1 = typename T_ParBox1::FramePtr;
-            detail::cellDensity<FramePtr0>(worker, forEachCell, parCellList0, densityArray0, accFilter0);
-            detail::cellDensity<FramePtr1>(worker, forEachCell, parCellList1, densityArray1, accFilter1);
-            worker.sync();
-
-            // shuffle indices list of the longest particle list
-            forEachCell(
-                [&](uint32_t const linearIdx)
-                {
-                    uint32_t maxListLength = math::max(parCellList0.size(linearIdx), parCellList1.size(linearIdx));
-
-                    uint32_t* parIdListLong = parCellList0.size(linearIdx) == maxListLength
-                                                  ? parCellList0.particleIds(linearIdx)
-                                                  : parCellList1.particleIds(linearIdx);
-                    detail::shuffle(worker, parIdListLong, maxListLength, rngHandle);
-                });
-
-            auto collisionFunctorCtx = forEachCell(
-                [&](uint32_t const linearIdx)
-                {
-                    return inCellCollisions(
-                        worker,
-                        rngHandle,
-                        srcCollisionFunctor,
-                        localSuperCellOffset,
-                        superCellIdx,
-                        densityArray0[linearIdx],
-                        densityArray1[linearIdx],
-                        parCellList0.getParticlesAccessor(linearIdx),
-                        parCellList1.getParticlesAccessor(linearIdx),
-                        linearIdx);
-                });
+            #if 0
+            // Calculate particle densities.
+            detail::cellDensity<typename T_Reactant1ParBox::FramePtr>(
+                worker,
+                forEachCell,
+                reactant1CellList,
+                reactant1Density,
+                accFilter0);
+            detail::cellDensity<typename T_Reactant2ParBox::FramePtr>(
+                worker,
+                forEachCell,
+                reactant2CellList,
+                reactant2Density,
+                accFilter1);
+            #endif
 
             worker.sync();
 
-            parCellList0.finalize(worker, deviceHeapHandle);
-            parCellList1.finalize(worker, deviceHeapHandle);
-
-            if constexpr(ifDebug)
-            {
-                auto onlyMaster = lockstep::makeMaster(worker);
-
-                PMACC_SMEM(worker, sumCoulombLogBlock, float_X);
-                PMACC_SMEM(worker, sumSParamBlock, float_X);
-                PMACC_SMEM(worker, timesCollidedBlock, uint64_t);
-                onlyMaster(
-                    [&]()
-                    {
-                        sumCoulombLogBlock = 0.0_X;
-                        sumSParamBlock = 0.0_X;
-                        timesCollidedBlock = 0.0_X;
-                    });
-                worker.sync();
-                forEachCell(
-                    [&](uint32_t idx, auto const& collisionFunctor)
-                    {
-                        auto const timesUsed = static_cast<uint64_t>(collisionFunctor.timesUsed);
-                        if(timesUsed > 0u)
-                        {
-                            alpaka::atomicAdd(
-                                worker.getAcc(),
-                                &sumCoulombLogBlock,
-                                static_cast<float_X>(collisionFunctor.sumCoulombLog),
-                                ::alpaka::hierarchy::Threads{});
-                            alpaka::atomicAdd(
-                                worker.getAcc(),
-                                &sumSParamBlock,
-                                static_cast<float_X>(collisionFunctor.sumSParam),
-                                ::alpaka::hierarchy::Threads{});
-                            alpaka::atomicAdd(
-
-                                worker.getAcc(),
-                                &timesCollidedBlock,
-                                timesUsed,
-                                ::alpaka::hierarchy::Threads{});
-                        }
-                    },
-                    collisionFunctorCtx);
-
-                worker.sync();
-
-                onlyMaster(
-                    [&]()
-                    {
-                        alpaka::atomicAdd(
-                            worker.getAcc(),
-                            &(sumCoulombLogBox[0]),
-                            sumCoulombLogBlock,
-                            ::alpaka::hierarchy::Blocks{});
-                        alpaka::atomicAdd(
-                            worker.getAcc(),
-                            &(sumSParamBox[0]),
-                            sumSParamBlock,
-                            ::alpaka::hierarchy::Blocks{});
-                        alpaka::atomicAdd(
-                            worker.getAcc(),
-                            &(timesCollidedBox[0]),
-                            timesCollidedBlock,
-                            ::alpaka::hierarchy::Blocks{});
-                    });
+            // Find the maximum number of particles (either species) p\er cell.
+            PMACC_SMEM(worker, maxNppc, uint32_t);
+            for(uint32_t i = worker.workerIdx(); i<numCellsPerSuperCell; i+=worker.numWorkers()){
+                nppc[i] = std::max(reactant1CellList.numParticles[i], reactant2CellList.numParticles[i]);
             }
+            // now in nppc[i] we have the maximum number of particles in each cell
+            worker.sync();
+            maxArrayDestroy(worker, nppc, numCellsPerSuperCell);
+            // now in nppc[0] we have the maximum number of particles in the supercell
+            onlyMaster([&]() {
+                maxNppc = nppc[0];
+                printf("worker %d: maxNppc = %d\n", worker.workerIdx(), maxNppc);
+            });
+            // don't need sync
+
+
+            // --- 4. Shuffle Particle Lists ---
+            // To ensure random pairing, shuffle the longer list in each cell.
+            forEachCell([&](uint32_t const linearIdx) {
+                uint32_t size1 = reactant1CellList.size(linearIdx);
+                uint32_t size2 = reactant2CellList.size(linearIdx);
+
+                if (size1 > size2)
+                {
+                    detail::shuffle(worker, reactant1CellList.particleIds(linearIdx), size1, rngHandle);
+                }
+                else if (size2 > 0)
+                {
+                    detail::shuffle(worker, reactant2CellList.particleIds(linearIdx), size2, rngHandle);
+                }
+            });
+
+
+
+            // allocate memory for the list where we store how many times did we use the weighting
+            // After processing each cell we update the reactant particles using this info
+            // We need to subtract the number of times it underwent fusion*minWeighting*something else
+            PMACC_SMEM(worker, weightArray, uint32_t*);
+            onlyMaster([&]() {
+                constexpr uint32_t chunkSizePerCell = cellListChunkSize * sizeof(uint32_t);
+                weightArray = (uint32_t*)
+                    reactant1CellList.allocMem<chunkSizePerCell>(worker, sizeof(uint32_t) * maxNppc, deviceHeapHandle);
+            });
+            // (*weightArray)[maxNppc-1];
+
+            worker.sync();
+
+            // --- 5. Collision Loop ---
+            processCollisionsInChunks(
+                worker,
+                idGen,
+                collisionFunctor,
+                superCellIdx,
+                reactant1CellList,
+                reactant2CellList,
+                product1Box,
+                product2Box,
+                weightArray,
+                maxNppc,
+                rngHandle);
+
+            //! @todo check if this is required
+            worker.sync();
+
+            // --- 6. Finalization ---
+            reactant1CellList.finalize(worker, deviceHeapHandle);
+            reactant2CellList.finalize(worker, deviceHeapHandle);
         }
 
+
+    private:
+        /**
+         * @brief Corrects for uneven particle list sizes by duplicating particles from the shorter list.
+         *
+         * This ensures that every particle in the longer list has a collision partner.
+         * The formula is from Higginson et al. 2020, DOI: 10.1016/j.jcp.2020.109450.
+         *
+         * @param idx Index in the longer list.
+         * @param sizeShort Size of the shorter particle list.
+         * @param sizeLong Size of the longer particle list.
+         * @return The duplication factor for the particle from the shorter list.
+         */
+        DINLINE static uint32_t duplicationCorrection(
+            uint32_t const idx,
+            uint32_t const sizeShort,
+            uint32_t const sizeLong)
+        {
+            if (sizeLong == sizeShort)
+                return 1u;
+
+            uint32_t correction = sizeLong / sizeShort;
+            uint32_t modulo = sizeLong % sizeShort;
+            if ((idx % sizeShort) < modulo)
+            {
+                correction += 1u;
+            }
+            return correction;
+        }
+
+        /**
+         * @brief Initializes the Random Number Generator for the current supercell.
+         */
+        template<typename T_Worker, typename T_Mapping, typename T_RngHandle>
+        DINLINE void initializeRNG(
+            T_Worker const& worker,
+            T_Mapping const& mapper,
+            DataSpace<simDim> const& superCellIdx,
+            T_RngHandle& rngHandle,
+            DataSpace<simDim> const localSuperCellOffset) const
+        {
+            auto rngOffset = DataSpace<simDim>::create(0);
+            rngOffset.x() = worker.workerIdx();
+
+            auto numRNGsPerSuperCell = DataSpace<simDim>::create(1);
+            numRNGsPerSuperCell.x() = numFrameSlots;
+
+            rngHandle.init(localSuperCellOffset * numRNGsPerSuperCell + rngOffset);
+        }
+
+        template<typename T_worker, typename T_arr>
+        DINLINE void zeroArray(T_worker const& worker, T_arr* arr, uint32_t const& size)
+        {
+            for (int i = worker.workerIdx();i < size; i += worker.numWorkers())
+            {
+                arr[i] = 0;
+            }
+            worker.sync();
+        }
+
+        template<typename T_worker, typename T_arr>
+        DINLINE void maxArrayDestroy(T_worker const& worker, T_arr* arr, uint32_t const& size)
+        {
+            uint32_t pow = 1;
+            while(pow < size){
+                for(uint32_t i = worker.workerIdx(); pow*(2*i+1) < size; i += 2*pow*worker.numWorkers())
+                {
+                    arr[2*i*pow] = std::max(arr[2*i*pow],arr[pow*(2*i+1)]);
+                }
+                pow <<= 1; //*2
+                worker.sync();
+            }
+            // max is now at arr[0];
+        }
+
+        /**
+         * @brief Processes particle collisions in manageable chunks to handle memory allocation.
+         */
         template<
             typename T_Worker,
-            typename T_RngHandle,
             typename T_SrcCollisionFunctor,
-            typename T_ParAccessor0,
-            typename T_ParAccessor1>
-        DINLINE decltype(auto) inCellCollisions(
+            typename T_Reactant1List,
+            typename T_Reactant2List,
+            typename T_Product1ParBox,
+            typename T_Product2ParBox,
+            typename T_RngHandle>
+        DINLINE void processCollisionsInChunks(
             T_Worker const& worker,
-            T_RngHandle& rngHandle,
-            T_SrcCollisionFunctor const& srcCollisionFunctor,
-            DataSpace<simDim> const& localSuperCellOffset,
+            IdGenerator& idGen,
+            T_SrcCollisionFunctor const& collisionFunctor,
             DataSpace<simDim> const& superCellIdx,
-            float_X const& density0,
-            float_X const& density1,
-            T_ParAccessor0 const& parAccessor0,
-            T_ParAccessor1 const& parAccessor1,
-            [[maybe_unused]] int32_t linearCellIdx) const
+            T_Reactant1List& reactant1CellList,
+            T_Reactant2List& reactant2CellList,
+            T_Product1ParBox& product1Box,
+            T_Product2ParBox& product2Box,
+            uint32_t* weightingArray,
+            uint32_t weightingArraySize,
+            T_RngHandle& rngHandle) const
         {
-            uint32_t const size0 = parAccessor0.size();
-            uint32_t const size1 = parAccessor1.size();
-            uint32_t const minListLength = math::min(size0, size1);
-            uint32_t const maxListLength = math::max(size0, size1);
+            // Create a small buffer of target frames for new particles
+            // Two empty frames at the end because for each fusion reaction we will create two product particles
+            // We use 3 frames: [current_partially_filled, next_empty, next_empty]
+            constexpr uint32_t NUM_PRODUCT_FRAMES = 3;
+            using ProductFramePtr1 = typename T_Product1ParBox::FramePtr;
+            using ProductFramePtr2 = typename T_Product2ParBox::FramePtr;
+            using FrameArray1 = memory::Array<ProductFramePtr1, NUM_PRODUCT_FRAMES>;
+            using FrameArray2 = memory::Array<ProductFramePtr2, NUM_PRODUCT_FRAMES>;
 
-            auto destCollisionFunctor
-                = srcCollisionFunctor(worker, localSuperCellOffset, density0, density1, maxListLength);
+            PMACC_SMEM(worker, product1Frames, FrameArray1);
+            PMACC_SMEM(worker, product2Frames, FrameArray2);
+            PMACC_SMEM(worker, particlesCreatedInChunk, uint32_t);
+            PMACC_SMEM(worker, product1FillLevel, uint32_t);
+            PMACC_SMEM(worker, product2FillLevel, uint32_t);
 
-            if constexpr(useScreeningLength)
+            
+            // Master thread pre-allocates the next two empty frames for each product.
+            auto onlyMaster = lockstep::makeMaster(worker);
+            onlyMaster([&]() {
+                // Get current fill levels and frames.
+                product1FillLevel = product1Box.getSuperCell(superCellIdx).getSizeLastFrame();
+                product2FillLevel = product2Box.getSuperCell(superCellIdx).getSizeLastFrame();
+
+                product1Frames[0] = product1Box.getLastFrame(superCellIdx);
+                product2Frames[0] = product2Box.getLastFrame(superCellIdx);
+
+                product1Frames[1] = product1Box.getEmptyFrame(worker);
+                product1Box.setAsLastFrame(worker, product1Frames[1], superCellIdx);
+                product1Frames[2] = product1Box.getEmptyFrame(worker);
+                product1Box.setAsLastFrame(worker, product1Frames[2], superCellIdx);
+
+                product2Frames[1] = product2Box.getEmptyFrame(worker);
+                product2Box.setAsLastFrame(worker, product2Frames[1], superCellIdx);
+                product2Frames[2] = product2Box.getEmptyFrame(worker);
+                product2Box.setAsLastFrame(worker, product2Frames[2], superCellIdx);
+
+                particlesCreatedInChunk = 0u;
+            });
+            worker.sync();
+
+            constexpr auto particlesPerFrame1 = T_Product1ParBox::frameSize;
+            constexpr auto particlesPerFrame2 = T_Product2ParBox::frameSize;
+            constexpr uint32_t numPairsAtOnce = (particlesPerFrame1 <= particlesPerFrame2) ? particlesPerFrame1 : particlesPerFrame2;
+
+            static_assert(numPairsAtOnce > 0, "Frame size for product species must be greater than zero.");
+
+            // Iterate over all cells in the supercell
+            
+            constexpr uint32_t numCellsPerSuperCell = pmacc::math::CT::volume<SuperCellSize>::type::value;
+            for (int cellIdx = 0; cellIdx < numCellsPerSuperCell ; ++cellIdx)
             {
-                auto const shifted = screeningLengthSquared.shift(superCellIdx * SuperCellSize::toRT());
-                auto const idxInSuperCell = pmacc::math::mapToND(SuperCellSize::toRT(), linearCellIdx);
-                destCollisionFunctor.coulombLogFunctor.screeningLengthSquared_m = shifted(idxInSuperCell)[0];
-            }
+                zeroArray(worker, weightingArray, weightingArraySize); // sync() inside
 
-            if(minListLength != 0u)
-            {
-                for(uint32_t i = 0; i < maxListLength; ++i)
+                uint32_t const size1 = reactant1CellList.numParticles[cellIdx];
+                uint32_t const size2 = reactant2CellList.numParticles[cellIdx];
+                if (size1 == 0 || size2 == 0) continue;
+
+                auto accessor1 = reactant1CellList.getParticlesAccessor(cellIdx);
+                auto accessor2 = reactant2CellList.getParticlesAccessor(cellIdx);
+
+                // Determine which particle list is longer to iterate over it.
+                bool const isList1Longer = (size1 >= size2);
+                uint32_t const maxNumParticles = isList1Longer ? size1 : size2;
+                uint32_t const minNumParticles = isList1Longer ? size2 : size1;
+
+                // Thread collective loop
+                // Process particles in chunks to manage memory frame allocations
+                for (uint32_t chunkStart = 0; chunkStart < maxNumParticles; chunkStart += numPairsAtOnce)
                 {
-                    auto par0 = parAccessor0[i % size0];
-                    auto par1 = parAccessor1[i % size1];
-                    destCollisionFunctor.duplicationCorrection
-                        = duplicationCorrection(i, minListLength, maxListLength);
-                    destCollisionFunctor(detail::makeCollisionContext(worker, rngHandle), par0, par1);
+                    // Parallel grid-stride loop over the current chunk
+                    constexpr uint32_t step = std::min(worker.numWorkers(), numPairsAtOnce);
+                    for (int i = chunkStart + worker.workerIdx(); i < chunkStart + numPairsAtOnce && i < maxNumParticles; i += step)
+                    {
+                        auto reactant1 = accessor1[i % size1];
+                        auto reactant2 = accessor2[i % size2];
+                        auto duplicationFactor = duplicationCorrection(i, minNumParticles, maxNumParticles);
+
+                        float3_X product1Momentum{0._X};
+                        float3_X product2Momentum{0._X};
+
+                        // The actual fusion physics calculation
+                        T_SrcCollisionFunctor fuser = collisionFunctor;
+                        fuser().fuse(worker, reactant1, reactant2, duplicationFactor, product1Momentum, product2Momentum, rngHandle);
+
+                        // If a reaction occurred, create the product particles
+                        if (product1Momentum != float3_X{0._X} || product2Momentum != float3_X{0._X})
+                        {
+                            weightingArray[i]++; // no atomic needed
+
+                            uint32_t freeIndex = alpaka::atomicAdd(
+                                worker.getAcc(),
+                                &particlesCreatedInChunk,
+                                2u, // two particles are created per reaction per product
+                                ::alpaka::hierarchy::Threads{});
+
+                            // Calculate indices into the target frames
+                            auto idx1 = (product1FillLevel + freeIndex);
+                            auto idx2 = (product2FillLevel + freeIndex);
+                            
+                            auto product1AtR1Pos = product1Frames[idx1 / particlesPerFrame1][idx1 % particlesPerFrame1];
+                            auto product2AtR1Pos = product2Frames[idx2 / particlesPerFrame2][idx2 % particlesPerFrame2];
+
+                            idx1++;
+                            idx2++;
+
+                            auto product1AtR2Pos = product1Frames[idx1 / particlesPerFrame1][idx1 % particlesPerFrame1];
+                            auto product2AtR2Pos = product2Frames[idx2 / particlesPerFrame2][idx2 % particlesPerFrame2];
+                            detail::CreationFusion creator;
+                            creator.createParticles(
+                                worker, idGen,
+                                reactant1, reactant2,
+                                product1Momentum, product2Momentum,
+                                product1AtR1Pos, product1AtR2Pos,
+                                product2AtR1Pos, product2AtR2Pos
+                            );
+                        }
+
+                    } // end grid-stride loop for chunk
+                    worker.sync();
+
+                    // Master thread checks if new frames are needed and allocates them.
+                    if (worker.workerIdx() == 0)
+                    {
+                        product1FillLevel = manageFrameAllocation<T_Product1ParBox>(
+                            worker, superCellIdx, product1Frames,product1Box, product1FillLevel, particlesCreatedInChunk);
+
+                        product2FillLevel = manageFrameAllocation<T_Product2ParBox>(
+                            worker, superCellIdx, product2Frames,product2Box, product2FillLevel, particlesCreatedInChunk);
+                        
+                        particlesCreatedInChunk = 0u;
+                    }
+                    worker.sync();
+                } // end chunk loop
+
+                // do the magic with weighting and changing momenta
+                worker.sync();
+
+            } // end cell loop
+        }
+        
+        /**
+         * @brief Manages the allocation of new particle frames when the current ones are full.
+         *
+         * @return The new fill level for the current frame.
+         */
+        template<typename T_ProductParBox, typename T_Worker, size_t N>
+        DINLINE uint32_t manageFrameAllocation(
+            T_Worker const& worker,
+            DataSpace<simDim> const& superCellIdx,
+            memory::Array<typename T_ProductParBox::FramePtr, N>& productFrames,
+            T_ProductParBox productBox,
+            uint32_t currentFillLevel,
+            uint32_t particlesCreated) const
+        {
+            constexpr auto particlesPerFrame = T_ProductParBox::frameSize;
+            uint32_t newFillLevel = currentFillLevel + particlesCreated;
+            
+            if (newFillLevel > particlesPerFrame)
+            {
+                // First new frame is needed
+                productFrames[0] = productFrames[1];
+                productFrames[1] = productFrames[2];
+                productFrames[2] = productBox.getEmptyFrame(worker);
+                productBox.setAsLastFrame(worker, productFrames[2], superCellIdx);
+                newFillLevel -= particlesPerFrame;
+
+                if (newFillLevel > particlesPerFrame)
+                {
+                    // Second new frame is also needed
+                    productFrames[0] = productFrames[1];
+                    productFrames[1] = productFrames[2];
+                    productFrames[2] = productBox.getEmptyFrame(worker);
+                    productBox.setAsLastFrame(worker, productFrames[2], superCellIdx);
+                    newFillLevel -= particlesPerFrame;
+
+                    if (newFillLevel > particlesPerFrame)
+                    {
+                        printf("Error: Your logic is flawed - too many particles created for frame management to handle.\n");
+                    }
                 }
             }
-            return destCollisionFunctor;
+
+            printf("WorkerIDx: %u, Current fill level: %u, particles created: %u, particles per frame: %u, New fill level: %u\n",
+                worker.workerIdx(), currentFillLevel, particlesCreated, particlesPerFrame, newFillLevel);
+
+            // print fill level after allocation
+            return newFillLevel;
         }
     };
 
-    /* Run kernel for collisions between two species.
+
+    /**
+     * @brief Kernel launcher for inter-species collisions.
      *
-     * @tparam T_CollisionFunctor A binary particle functor defining a single macro particle collision in
-     * the binary-collision algorithm.
-     * @tparam T_FilterPair A pair of particle filters, each for each species
-     *     in the colliding pair.
-     * @tparam T_Species0 1st colliding species.
-     * @tparam T_Species1 2nd colliding species.
+     * This struct sets up the environment and launches the main `InterCollision`
+     * kernel for a specific pair of reactant and product species.
      */
     template<
         typename T_CollisionFunctor,
         typename T_FilterPair,
-        typename T_Species0,
-        typename T_Species1,
+        typename T_ReactantSpecies0,
+        typename T_ReactantSpecies1,
+        typename T_ProductSpecies1,
+        typename T_ProductSpecies2,
         uint32_t colliderId,
         uint32_t pairId>
     struct DoInterCollision
     {
-        /* Run kernel
+        /**
+         * @brief Runs the collision kernel.
          *
-         * @param deviceHeap A pointer to device heap for allocating particle lists.
+         * @param deviceHeap A pointer to device heap for dynamic memory.
          * @param currentStep The current simulation step.
+         * @param idGen The unique ID generator for new particles.
          */
         HINLINE void operator()(std::shared_ptr<DeviceHeap> const& deviceHeap, uint32_t currentStep, IdGenerator idGen)
         {
-            using Species0 = T_Species0;
-            using FrameType0 = typename Species0::FrameType;
-            using Filter0 = typename T_FilterPair::first ::template apply<Species0>::type;
+            // --- Type Aliases for Readability ---
+            using Species0 = T_ReactantSpecies0;
+            using Filter0 = typename T_FilterPair::first::template apply<Species0>::type;
 
-            using Species1 = T_Species1;
-            using FrameType1 = typename Species1::FrameType;
-            using Filter1 = typename T_FilterPair::second ::template apply<Species1>::type;
+            using Species1 = T_ReactantSpecies1;
+            using Filter1 = typename T_FilterPair::second::template apply<Species1>::type;
 
-            using CollisionFunctor = T_CollisionFunctor;
+            // --- Data Access ---
+            auto& dc = Environment<>::get().DataConnector();
+            auto species0 = dc.get<Species0>(Species0::FrameType::getName());
+            auto species1 = dc.get<Species1>(Species1::FrameType::getName());
+            auto productSpecies1 = dc.get<T_ProductSpecies1>(T_ProductSpecies1::FrameType::getName());
+            auto productSpecies2 = dc.get<T_ProductSpecies2>(T_ProductSpecies2::FrameType::getName());
 
-            // Access particle data:
-            DataConnector& dc = Environment<>::get().DataConnector();
-            auto species0 = dc.get<Species0>(FrameType0::getName());
-            auto species1 = dc.get<Species1>(FrameType1::getName());
-
-            // Use mapping information from the first species:
+            // --- Kernel Configuration and Launch ---
             auto const mapper = makeAreaMapper<CORE + BORDER>(species0->getCellDescription());
-
-            //! random number generator
             using RNGFactory = pmacc::random::RNGProvider<simDim, random::Generator>;
-            using Kernel = typename CollisionFunctor::CallingInterKernel;
-            constexpr bool ifDebug = CollisionFunctor::ifDebug_m;
-            if constexpr(ifDebug)
-            {
-                GridBuffer<float_X, DIM1> sumCoulombLog(DataSpace<DIM1>(1));
-                sumCoulombLog.getDeviceBuffer().setValue(0.0_X);
-                GridBuffer<float_X, DIM1> sumSParam(DataSpace<DIM1>(1));
-                sumSParam.getDeviceBuffer().setValue(0.0_X);
-                GridBuffer<uint64_t, DIM1> timesCollided(DataSpace<DIM1>(1));
-                timesCollided.getDeviceBuffer().setValue(0u);
-                PMACC_LOCKSTEP_KERNEL(Kernel{}).config(mapper.getGridDim(), *species0)(
+            using Kernel = InterCollision; // The refactored kernel functor
+
+            PMACC_LOCKSTEP_KERNEL(Kernel{})
+                .config(mapper.getGridDim(), *species0)(
                     species0->getDeviceParticlesBox(),
                     species1->getDeviceParticlesBox(),
+                    productSpecies1->getDeviceParticlesBox(),
+                    productSpecies2->getDeviceParticlesBox(),
+                    idGen,
                     mapper,
                     deviceHeap->getAllocatorHandle(),
                     RNGFactory::createHandle(),
-                    CollisionFunctor(currentStep),
+                    T_CollisionFunctor(currentStep),
                     particles::filter::IUnary<Filter0>{currentStep, idGen},
-                    particles::filter::IUnary<Filter1>{currentStep, idGen},
-                    sumCoulombLog.getDeviceBuffer().getDataBox(),
-                    sumSParam.getDeviceBuffer().getDataBox(),
-                    timesCollided.getDeviceBuffer().getDataBox());
+                    particles::filter::IUnary<Filter1>{currentStep, idGen});
 
-                sumCoulombLog.deviceToHost();
-                sumSParam.deviceToHost();
-                timesCollided.deviceToHost();
-
-                float_X reducedAverageCoulombLog;
-                float_X reducedSParam;
-                uint64_t reducedTimesCollided;
-                mpi::MPIReduce reduce{};
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedAverageCoulombLog,
-                    sumCoulombLog.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedSParam,
-                    sumSParam.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedTimesCollided,
-                    timesCollided.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-
-                if(reduce.hasResult(mpi::reduceMethods::Reduce()))
-                {
-                    std::ofstream outFile{};
-                    std::string fileName = "debug_values_collider_" + std::to_string(colliderId) + "_species_pair_"
-                                           + std::to_string(pairId) + ".dat";
-                    outFile.open(fileName.c_str(), std::ofstream::out | std::ostream::app);
-                    outFile << currentStep << " "
-                            << reducedAverageCoulombLog / static_cast<float_X>(reducedTimesCollided) << " "
-                            << reducedSParam / static_cast<float_X>(reducedTimesCollided) << std::endl;
-                    outFile.flush();
-                    outFile.close();
-                }
-            }
-            else
-            {
-                PMACC_LOCKSTEP_KERNEL(Kernel{}).config(mapper.getGridDim(), *species0)(
-                    species0->getDeviceParticlesBox(),
-                    species1->getDeviceParticlesBox(),
-                    mapper,
-                    deviceHeap->getAllocatorHandle(),
-                    RNGFactory::createHandle(),
-                    CollisionFunctor(currentStep),
-                    particles::filter::IUnary<Filter0>{currentStep, idGen},
-                    particles::filter::IUnary<Filter1>{currentStep, idGen},
-                    nullptr,
-                    nullptr,
-                    nullptr);
-            }
+            productSpecies1->fillAllGaps();
+            productSpecies2->fillAllGaps();
         }
     };
-} // namespace picongpu::particles::collision
+} // namespace picongpu::particles::fusion

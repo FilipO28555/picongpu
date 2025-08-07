@@ -20,5 +20,5 @@
 #pragma once
 
 #include "picongpu/particles/fusion/Collider.hpp"
-#include "picongpu/particles/fusion/relativistic/RelativisticCollisionConstLog.hpp"
-#include "picongpu/particles/fusion/relativistic/RelativisticCollisionDynamicLog.hpp"
+#include "picongpu/particles/fusion/relativistic/FusionFunctor.hpp"
+

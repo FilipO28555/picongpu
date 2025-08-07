@@ -25,9 +25,7 @@ namespace picongpu
     {
         namespace fusion
         {
-            template<bool screeningLength>
             struct InterCollision;
-            template<bool screeningLength>
             struct IntraCollision;
         } // namespace fusion
     } // namespace particles

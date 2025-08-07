@@ -38,7 +38,7 @@ namespace picongpu
                 {
                 }
 
-                /** Perform particle particle fusion
+                /** Perform particle-particle fusion
                  *
                  * @param step index of time iteration
                  */

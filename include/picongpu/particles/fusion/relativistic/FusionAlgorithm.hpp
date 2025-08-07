@@ -144,27 +144,6 @@ namespace picongpu
                         return comsMomentum + diff;
                     }
 
-                    /* Calculate the cosine of the scattering angle.
-                     *
-                     * The probability distribution for the cosine depends on @f[ s_{12} @f]. The returned vale
-                     * is determined by a float value between 0 and 1.
-                     *
-                     * @param s12 @f[ s_{12} @f] parameter. See [Perez 2012]. It should be >= 0.
-                     * @param u a random generated float within the range [0;1)
-                     */
-                    DINLINE float_COLL calcCosXi(float_COLL const s12, float_COLL const u)
-                    {
-                        // new fit from smilei implementation:
-                        if(s12 < 4._COLL)
-                        {
-                            float_COLL const s2 = s12 * s12;
-                            float_COLL const alpha = 0.37_COLL * s12 - 0.005_COLL * s2 - 0.0064_COLL * s2 * s12;
-                            float_COLL const sin2X2 = alpha * u / math::sqrt((1._COLL - u) + alpha * alpha * u);
-                            return 1._COLL - 2.0_COLL * sin2X2;
-                        }
-                        else
-                            return 2._COLL * u - 1._COLL;
-                    }
 
                     /* Calculate the momentum after the collision in the COM frame
                      *
@@ -285,199 +264,41 @@ namespace picongpu
                         }
                     };
 
-                    //! Base class for relativistic collision that is used to extend the algorithm with debug features
-                    template<bool ifDebug>
-                    struct RelativisticCollisionBase
+
+                    template<typename T_CrossSection, bool ifDebug>
+                    struct FusionAlg
                     {
-                        DINLINE void processDebugValues(
-                            float_COLL const& sumCoulombLog_p,
-                            float_COLL const& sumSParam_p)
-                        {
-                        }
-                    };
+                        HDINLINE FusionAlg()
+                            : duplicationCorrection(1u) {};
 
-                    template<>
-                    struct RelativisticCollisionBase<true>
-                    {
-                        PMACC_ALIGN(sumCoulombLog = 0._COLL, float_COLL);
-                        PMACC_ALIGN(sumSParam = 0._COLL, float_COLL);
-                        PMACC_ALIGN(timesUsed = 0u, uint32_t);
-
-                        DINLINE void processDebugValues(
-                            float_COLL const& sumCoulombLog_p,
-                            float_COLL const& sumSParam_p)
-                        {
-                            sumCoulombLog += sumCoulombLog_p;
-                            sumSParam += sumSParam_p;
-                            timesUsed++;
-                        }
-                    };
-
-                    /* Perform a single binary collision between two macro particles. (Device side functor)
-                     *
-                     * This algorithm was described in [Perez 2012] @url www.doi.org/10.1063/1.4742167.
-                     * And it incorporates changes suggested in [Higginson 2020]
-                     * @url www.doi.org/10.1016/j.jcp.2020.109450
-                     */
-                    template<typename T_CoulombLogFunctor, bool ifDebug>
-                    struct RelativisticCollision : public RelativisticCollisionBase<ifDebug>
-                    {
-                        /* Initialize device side functor.
-                         *
-                         * @param p_densitySqCbrt0 @f[ n_0^{2/3} @f] where @f[ n_0 @f] is the 1st species density.
-                         * @param p_densitySqCbrt1 @f[ n_1^{2/3} @f] where @f[ n_1 @f] is the 2nd species density.
-                         * @param p_potentialPartners number of potential collision partners for a macro particle in
-                         *   the cell.
-                         * @param p_coulombLog coulomb logarithm
-                         */
-                        HDINLINE RelativisticCollision(
-                            float_COLL p_densitySqCbrt0,
-                            float_COLL p_densitySqCbrt1,
-                            uint32_t p_potentialPartners)
-                            : densitySqCbrt0(p_densitySqCbrt0)
-                            , densitySqCbrt1(p_densitySqCbrt1)
-                            , duplicationCorrection(1u)
-                            , potentialPartners(p_potentialPartners) {};
-
-                        PMACC_ALIGN(coulombLogFunctor, T_CoulombLogFunctor);
-                        PMACC_ALIGN(densitySqCbrt0, float_COLL);
-                        PMACC_ALIGN(densitySqCbrt1, float_COLL);
+                        PMACC_ALIGN(crossSection, T_CrossSection);
                         PMACC_ALIGN(duplicationCorrection, float_COLL);
-                        PMACC_ALIGN(potentialPartners, uint32_t);
 
-                    private:
-                        //! Calculates the s parameter from the algorithm
-                        DINLINE float_COLL normalizedPathLength(Variables const& v, float_COLL const& coulombLog) const
-                        {
-                            // const float_COLL coulombLog = 10._COLL;
-                            //  f0 * f1 * f2^2
-                            //  is equal  s12 * (n12/(n1*n2)) from [Perez 2012]
-                            float_COLL s12Factor0
-                                = (DELTA_T_COLL * coulombLog * v.charge0 * v.charge0 * v.charge1 * v.charge1)
-                                  / (4.0_COLL * pmacc::math::Pi<float_COLL>::value * EPS0_COLL * EPS0_COLL * c * c * c
-                                     * c * v.mass0 * v.gamma0 * v.mass1 * v.gamma1);
-                            s12Factor0 *= 1.0_COLL / WEIGHT_NORM_COLL / WEIGHT_NORM_COLL;
-                            float_COLL const s12Factor1 = v.gammaComs * math::sqrt(v.comsMomentum0Norm2)
-                                                          / (v.mass0 * v.gamma0 + v.mass1 * v.gamma1);
-                            float_COLL const s12Factor2
-                                = v.coeff0 * v.coeff1 * c * c / v.comsMomentum0Norm2 + 1.0_COLL;
-                            // Statistical part from [Higginson 2020],
-                            // corresponds to n1*n2/n12 in [Perez 2012]:
-                            float_COLL const s12Factor3
-                                = potentialPartners * math::max(v.normalizedWeight0, v.normalizedWeight1)
-                                  * WEIGHT_NORM_COLL / static_cast<float_COLL>(duplicationCorrection)
-                                  / CELL_VOLUME_COLL;
-                            float_COLL const s12n = s12Factor0 * s12Factor1 * s12Factor2 * s12Factor2 * s12Factor3;
 
-                            // low Temeprature correction:
-                            // [Perez 2012] (8)
-                            // TODO: should we check for the non-relativistic condition? Which gamma should we look at?
-                            float_COLL relativeComsVelocity = calcRelativeComsVelocity(
-                                math::sqrt(v.comsMomentum0Norm2),
-                                v.mass0,
-                                v.mass1,
-                                v.gamma0,
-                                v.gamma1,
-                                v.coeff0,
-                                v.coeff1,
-                                v.gammaComs);
-                            // [Perez 2012] (21) ( without n1*n2/n12 )
-                            float_COLL s12Max = math::pow(
-                                                    4.0_COLL * pmacc::math::Pi<float_COLL>::value / 3._COLL,
-                                                    1.0_COLL / 3.0_COLL)
-                                                * DELTA_T_COLL * (v.mass0 + v.mass1)
-                                                / math::max(v.mass0 * densitySqCbrt0, v.mass1 * densitySqCbrt1)
-                                                * relativeComsVelocity;
-                            s12Max *= s12Factor3;
-                            return math::min(s12n, s12Max);
-                        }
-
-                        //! sample scattering angles and apply the new momenta
-                        template<typename T_Context, typename T_Par0, typename T_Par1>
-                        DINLINE void lastPart(
-                            Variables const& v,
-                            T_Context const& ctx,
-                            T_Par0& par0,
-                            T_Par1& par1,
-                            float_COLL const& s12) const
-                        {
+                    public:
+                        template<typename T_Worker, typename T_Par0, typename T_Par1, typename T_RngHandle>
+                        DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, uint32_t duplicationCorrection, float3_X &mom1, float3_X &mom2, T_RngHandle& rngHandle){
+                            // if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
+                            //    && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
+                                // return;
+                            // Variables const v{par0, par1};
+                            // if(v.comsMomentum0Norm2 == 0.0_COLL)
+                                // return;
+                                
                             // Get a random float value from 0,1
-                            auto const& worker = *ctx.m_worker;
-                            auto& rngHandle = *ctx.m_hRng;
                             using UniformFloat = pmacc::random::distributions::Uniform<
                                 pmacc::random::distributions::uniform::ExcludeOne<float_COLL>::Reduced>;
                             auto rng = rngHandle.template applyDistribution<UniformFloat>();
                             float_COLL rngValue = rng(worker);
 
-                            float_COLL const cosXi = calcCosXi(s12, rngValue);
-                            float_COLL const phi = 2.0_COLL * PI * rng(worker);
-                            float3_COLL const finalComs0 = calcFinalComsMomentum(v.comsMomentum0, cosXi, phi);
+                            float_X someEnergy = math::dot(par0[momentum_], par0[momentum_]);
+                            float_X test_sigma = crossSection(someEnergy);
 
-                            float3_COLL finalLab0, finalLab1;
-                            if(v.normalizedWeight0 > v.normalizedWeight1)
-                            {
-                                finalLab1 = comsToLab(
-                                    -1.0_COLL * finalComs0,
-                                    v.mass1,
-                                    v.coeff1,
-                                    v.gammaComs,
-                                    v.factorA,
-                                    v.comsVelocity);
+                            test_sigma *= (rngValue < 0.01);
 
-
-                                par1[momentum_] = precisionCast<float_X>(finalLab1 * v.normalizedWeight1);
-                                if((v.normalizedWeight1 / v.normalizedWeight0) - rng(worker) > 0.0_COLL)
-                                {
-                                    finalLab0 = comsToLab(
-                                        finalComs0,
-                                        v.mass0,
-                                        v.coeff0,
-                                        v.gammaComs,
-                                        v.factorA,
-                                        v.comsVelocity);
-                                    par0[momentum_] = precisionCast<float_X>(finalLab0 * v.normalizedWeight0);
-                                }
-                            }
-                            else
-                            {
-                                finalLab0
-                                    = comsToLab(finalComs0, v.mass0, v.coeff0, v.gammaComs, v.factorA, v.comsVelocity);
-                                par0[momentum_] = precisionCast<float_X>(finalLab0 * v.normalizedWeight0);
-                                if((v.normalizedWeight0 / v.normalizedWeight1) - rng(worker) >= 0.0_COLL)
-                                {
-                                    finalLab1 = comsToLab(
-                                        -1.0_COLL * finalComs0,
-                                        v.mass1,
-                                        v.coeff1,
-                                        v.gammaComs,
-                                        v.factorA,
-                                        v.comsVelocity);
-                                    par1[momentum_] = precisionCast<float_X>(finalLab1 * v.normalizedWeight1);
-                                }
-                            }
-                        }
-
-
-                    public:
-                        /** Execute the collision functor
-                         *
-                         * @param ctx collision context
-                         * @param par0 1st colliding macro particle
-                         * @param par1 2nd colliding macro particle
-                         */
-                        template<typename T_Context, typename T_Par0, typename T_Par1>
-                        DINLINE void operator()(T_Context const& ctx, T_Par0& par0, T_Par1& par1)
-                        {
-                            if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
-                               && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
-                                return;
-                            Variables const v{par0, par1};
-                            if(v.comsMomentum0Norm2 == 0.0_COLL)
-                                return;
-                            float_COLL const coulombLog = coulombLogFunctor(v);
-                            float_COLL const s12 = normalizedPathLength(v, coulombLog);
-                            RelativisticCollisionBase<ifDebug>::processDebugValues(coulombLog, s12);
-                            lastPart(v, ctx, par0, par1, s12);
+                            float3_X dir = float3_X(0,1,0);
+                            mom1 = dir*test_sigma;
+                            mom2 = -dir*test_sigma;
                         }
                     };
                 } // namespace acc

@@ -37,8 +37,8 @@ namespace picongpu
         {
             namespace detail
             {
-                //! For each implementation for calling a collider for each species pair with a loop index
-                template<typename T_SpeciesPairList, typename T_Collider, uint32_t colliderId>
+                // "For each" implementation for calling a collider for each species pair in a list of reactants
+                template<typename T_SpeciesPairListReactants, typename T_SpeciesPairListProducts, typename T_Collider, uint32_t colliderId>
                 struct CallColliderForAPair
                 {
                     template<size_t... I>
@@ -49,8 +49,10 @@ namespace picongpu
                     {
                         (fusion::WithPeer<
                              typename T_Collider::Functor,
-                             typename pmacc::mp_at_c<T_SpeciesPairList, I>::first,
-                             typename pmacc::mp_at_c<T_SpeciesPairList, I>::second,
+                             typename pmacc::mp_at_c<T_SpeciesPairListReactants, I>::first,
+                             typename pmacc::mp_at_c<T_SpeciesPairListReactants, I>::second,
+                             typename pmacc::mp_at_c<T_SpeciesPairListProducts, I>::first,
+                             typename pmacc::mp_at_c<T_SpeciesPairListProducts, I>::second,
                              typename T_Collider::FilterPair,
                              colliderId,
                              I>{}(deviceHeap, currentStep),
@@ -58,21 +60,22 @@ namespace picongpu
                     }
                 };
             } // namespace detail
-
+            
             template<typename T_Collider, uint32_t colliderId>
             struct CallCollider
             {
                 void operator()(std::shared_ptr<DeviceHeap> const& deviceHeap, uint32_t currentStep)
                 {
-                    using SpeciesPairList = pmacc::ToSeq<typename T_Collider::SpeciesPairs>;
-                    constexpr size_t numPairs = pmacc::mp_size<SpeciesPairList>::value;
+                    using SpeciesPairListReactants = pmacc::ToSeq<typename T_Collider::SpeciesPairsReactants>;
+                    using SpeciesPairListProducts = pmacc::ToSeq<typename T_Collider::SpeciesPairsProducts>;
+                    constexpr size_t numPairs = pmacc::mp_size<SpeciesPairListReactants>::value;
                     std::make_index_sequence<numPairs> index{};
-                    detail::CallColliderForAPair<SpeciesPairList, T_Collider, colliderId>{}(
+                    detail::CallColliderForAPair<SpeciesPairListReactants, SpeciesPairListProducts, T_Collider, colliderId>{}(
                         index,
                         deviceHeap,
                         currentStep);
                 }
             };
-        } // namespace collision
+        } // namespace fusion
     } // namespace particles
 } // namespace picongpu

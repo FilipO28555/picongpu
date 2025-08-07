@@ -34,19 +34,24 @@ namespace picongpu
                 using float_COLL = float_64;
             } // namespace precision
 
-            // write average (over all cells) Debye length for all timesteps to a file
-            constexpr bool debugScreeningLength = false;
+            struct FusionStruct{
+                struct Params
+                {
+                    static constexpr float_X C1 = 3.0_X;
+                    static constexpr float_X C2 = 3.0_X;
+                };
 
-            /** List of (filtered) species contributing to the screening (Debye) length calculation
-             *
-             * Elements must be either a species types or a misc::SpeciesFilter specialization.
-             */
-            using CollisionScreeningSpecies = MakeSeq_t<>;
-            /** CollisionPipeline defines in which order species interact with each other
+                using reactants = pmacc::mp_list<>;
+
+                using products = pmacc::mp_list<>;
+                
+                using ColliderFunctor = relativistic::FusionFunctor<Params, true>;
+            };
+            /** FusionPipeline defines in which order species interact with each other
              *
              * the functors are called in order (from first to last functor)
              */
-            using CollisionPipeline = pmacc::mp_list<>;
+            using FusionPipeline = pmacc::mp_list<>;
 
             /** Chunk size used for cell list allocations.
              *
@@ -57,6 +62,7 @@ namespace picongpu
              * usage, so we cap this chunk size by default at the TYPICAL_PARTICLES_PER_CELL value.
              */
             constexpr uint32_t cellListChunkSize = std::min(TYPICAL_PARTICLES_PER_CELL, 4u);
+            constexpr uint32_t pairListChunkSize = std::min(TYPICAL_PARTICLES_PER_CELL*TYPICAL_PARTICLES_PER_CELL, 16u);
 
         } // namespace collision
     } // namespace particles

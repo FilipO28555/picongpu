@@ -40,8 +40,10 @@ namespace picongpu
                 template<
                     typename T_CollisionFunctor,
                     typename T_FilterPair,
-                    typename T_BaseSpecies,
-                    typename T_PeerSpecies,
+                    typename T_ReactantSpecies1,
+                    typename T_ReactantSpecies2,
+                    typename T_ProductSpecies1,
+                    typename T_ProductSpecies2,
                     uint32_t colliderId,
                     uint32_t pairId>
                 struct WithPeer
@@ -54,8 +56,10 @@ namespace picongpu
                         DoInterCollision<
                             T_CollisionFunctor,
                             T_FilterPair,
-                            T_BaseSpecies,
-                            T_PeerSpecies,
+                            T_ReactantSpecies1,
+                            T_ReactantSpecies2,
+                            T_ProductSpecies1,
+                            T_ProductSpecies2,
                             colliderId,
                             pairId>{}(deviceHeap, currentStep, idProvider->getDeviceGenerator());
                     }
@@ -64,17 +68,19 @@ namespace picongpu
                 template<
                     typename T_CollisionFunctor,
                     typename T_FilterPair,
-                    typename T_Species,
+                    typename T_ReactantSpecies,
+                    typename T_ProductSpecies1,
+                    typename T_ProductSpecies2,
                     uint32_t colliderId,
                     uint32_t pairId>
-                struct WithPeer<T_CollisionFunctor, T_FilterPair, T_Species, T_Species, colliderId, pairId>
+                struct WithPeer<T_CollisionFunctor, T_FilterPair, T_ReactantSpecies, T_ReactantSpecies, T_ProductSpecies1, T_ProductSpecies2, colliderId, pairId>
                 {
                     void operator()(std::shared_ptr<DeviceHeap> const& deviceHeap, uint32_t currentStep)
                     {
                         DataConnector& dc = Environment<>::get().DataConnector();
                         auto idProvider = dc.get<IdProvider>("globalId");
 
-                        DoIntraCollision<T_CollisionFunctor, T_FilterPair, T_Species, colliderId, pairId>{}(
+                        DoIntraCollision<T_CollisionFunctor, T_FilterPair, T_ReactantSpecies, T_ProductSpecies1, T_ProductSpecies2, colliderId, pairId>(
                             deviceHeap,
                             currentStep,
                             idProvider->getDeviceGenerator());
@@ -98,8 +104,10 @@ namespace picongpu
              */
             template<
                 typename T_CollisionFunctor,
-                typename T_BaseSpecies,
-                typename T_PeerSpecies,
+                typename T_ReactantSpecies1,
+                typename T_ReactantSpecies2,
+                typename T_ProductSpecies1,
+                typename T_ProductSpecies2,
                 typename T_FilterPair,
                 uint32_t colliderId,
                 uint32_t pairId>
@@ -107,14 +115,18 @@ namespace picongpu
             {
                 void operator()(std::shared_ptr<DeviceHeap> const& deviceHeap, uint32_t currentStep)
                 {
-                    using BaseSpecies = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_BaseSpecies>;
+                    using ReactantSpecies1 = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_ReactantSpecies1>;
 
-                    using PeerSpecies = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_PeerSpecies>;
+                    using ReactantSpecies2 = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_ReactantSpecies2>;
+
+                    using ProductSpecies1 = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_ProductSpecies1>;
+
+                    using ProductSpecies2 = pmacc::particles::meta::FindByNameOrType_t<VectorAllSpecies, T_ProductSpecies2>;
 
                     using CollisionFunctor =
-                        typename boost::mpl::apply2<T_CollisionFunctor, BaseSpecies, PeerSpecies>::type;
+                        typename boost::mpl::apply4<T_CollisionFunctor, ReactantSpecies1, ReactantSpecies2, ProductSpecies1, ProductSpecies2>::type;
 
-                    detail::WithPeer<CollisionFunctor, T_FilterPair, BaseSpecies, PeerSpecies, colliderId, pairId>{}(
+                    detail::WithPeer<CollisionFunctor, T_FilterPair, ReactantSpecies1, ReactantSpecies2, ProductSpecies1, ProductSpecies2, colliderId, pairId>{}(
                         deviceHeap,
                         currentStep);
                 }

@@ -39,23 +39,13 @@
 
 namespace picongpu::particles::fusion
 {
-    template<bool useScreeningLength>
     struct IntraCollision
     {
         HINLINE IntraCollision()
         {
-            if constexpr(useScreeningLength)
-            {
-                constexpr uint32_t slot = screeningLengthSlot;
-                DataConnector& dc = Environment<>::get().DataConnector();
-                auto field = dc.get<FieldTmp>(FieldTmp::getUniqueId(slot));
-                screeningLengthSquared = field->getGridBuffer().getDeviceBuffer().getDataBox();
-            }
         }
 
     private:
-        PMACC_ALIGN(screeningLengthSquared, FieldTmp::DataBoxType);
-
         /* Get the duplication correction for a collision
          *
          * A particle duplication is how many times a particle collides in the current time step.
@@ -168,12 +158,6 @@ namespace picongpu::particles::fusion
                         potentialPartners);
                     if(sizeAll >= 2u)
                     {
-                        if constexpr(useScreeningLength)
-                        {
-                            auto const shifted = screeningLengthSquared.shift(superCellIdx * SuperCellSize::toRT());
-                            auto const idxInSuperCell = pmacc::math::mapToND(SuperCellSize::toRT(), idx);
-                            collisionFunctor.coulombLogFunctor.screeningLengthSquared_m = shifted(idxInSuperCell)[0];
-                        }
                         for(uint32_t i = 0; i < sizeAll; i += 2)
                         {
                             auto parEven = parAccess[i];
@@ -273,14 +257,16 @@ namespace picongpu::particles::fusion
         typename T_CollisionFunctor,
         typename T_FilterPair,
         typename T_Species,
+        typename T_ProductSpecies1,
+        typename T_ProductSpecies2,
         uint32_t colliderId,
         uint32_t pairId>
     struct DoIntraCollision;
 
     // A single template specialization. This ensures that the code won't compile if the FilterPair contains
-    // two different filters. That wouldn't make much sense for internal collisions.
-    template<typename T_CollisionFunctor, typename T_Filter, typename T_Species, uint32_t colliderId, uint32_t pairId>
-    struct DoIntraCollision<T_CollisionFunctor, FilterPair<T_Filter, T_Filter>, T_Species, colliderId, pairId>
+    /** two different filters. That wouldn't make much sense for internal collisions -> Are we sure about that?  @todo */
+    template<typename T_CollisionFunctor, typename T_Filter, typename T_Species, typename T_ProductSpecies1, typename T_ProductSpecies2, uint32_t colliderId, uint32_t pairId>
+    struct DoIntraCollision<T_CollisionFunctor, FilterPair<T_Filter, T_Filter>, T_Species, T_ProductSpecies1, T_ProductSpecies2, colliderId, pairId>
     {
         /* Run kernel
          *
@@ -305,65 +291,6 @@ namespace picongpu::particles::fusion
             constexpr bool ifDebug = CollisionFunctor::ifDebug_m;
             if constexpr(ifDebug)
             {
-                GridBuffer<float_X, DIM1> sumCoulombLog(DataSpace<DIM1>(1));
-                sumCoulombLog.getDeviceBuffer().setValue(0.0_X);
-                GridBuffer<float_X, DIM1> sumSParam(DataSpace<DIM1>(1));
-                sumSParam.getDeviceBuffer().setValue(0.0_X);
-                GridBuffer<uint64_t, DIM1> timesCollided(DataSpace<DIM1>(1));
-                timesCollided.getDeviceBuffer().setValue(0u);
-
-                /* random number generator */
-                PMACC_LOCKSTEP_KERNEL(Kernel{}).config(mapper.getGridDim(), *species)(
-                    species->getDeviceParticlesBox(),
-                    mapper,
-                    deviceHeap->getAllocatorHandle(),
-                    RNGFactory::createHandle(),
-                    CollisionFunctor(currentStep),
-                    particles::filter::IUnary<Filter>{currentStep, idGen},
-                    sumCoulombLog.getDeviceBuffer().getDataBox(),
-                    sumSParam.getDeviceBuffer().getDataBox(),
-                    timesCollided.getDeviceBuffer().getDataBox());
-
-                sumCoulombLog.deviceToHost();
-                sumSParam.deviceToHost();
-                timesCollided.deviceToHost();
-
-                float_X reducedAverageCoulombLog;
-                float_X reducedSParam;
-                uint64_t reducedTimesCollided;
-
-                mpi::MPIReduce reduce{};
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedAverageCoulombLog,
-                    sumCoulombLog.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedSParam,
-                    sumSParam.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-                reduce(
-                    pmacc::math::operation::Add(),
-                    &reducedTimesCollided,
-                    timesCollided.getHostBuffer().data(),
-                    1,
-                    mpi::reduceMethods::Reduce());
-
-                if(reduce.hasResult(mpi::reduceMethods::Reduce()))
-                {
-                    std::ofstream outFile{};
-                    std::string fileName = "debug_values_collider_" + std::to_string(colliderId) + "_species_pair_"
-                                           + std::to_string(pairId) + ".dat";
-                    outFile.open(fileName.c_str(), std::ofstream::out | std::ostream::app);
-                    outFile << currentStep << " "
-                            << reducedAverageCoulombLog / static_cast<float_X>(reducedTimesCollided) << " "
-                            << reducedSParam / static_cast<float_X>(reducedTimesCollided) << std::endl;
-                    outFile.flush();
-                    outFile.close();
-                }
             }
             else
             {

@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "picongpu/particles/fusion/fusion.def"
+#include "picongpu/particles/collision/collision.def"
 
 #include <algorithm>
 
@@ -27,7 +27,7 @@ namespace picongpu
 {
     namespace particles
     {
-        namespace fusion
+        namespace collision
         {
             namespace precision
             {
