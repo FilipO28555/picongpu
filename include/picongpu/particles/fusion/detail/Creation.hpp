@@ -45,6 +45,7 @@ namespace picongpu::particles::fusion
                     IdGenerator& idGen,
                 T_ParAccessor0 const& r1,
                 T_ParAccessor1 const& r2,
+                float_X const& productWeighting,
                 float3_X const& mom1,
                 float3_X const& mom2,
                 T_ParAccessor2& p1r1, // product 1 at pos 1
@@ -66,10 +67,10 @@ namespace picongpu::particles::fusion
                  * - multiMask: reading from global memory takes longer than just setting it again explicitly
                  * - momentum: we have the momentum
                  */
-                auto targetClone2 = partOp::deselect<pmacc::mp_list<multiMask, momentum>>(p1r1);
-                auto targetClone3 = partOp::deselect<pmacc::mp_list<multiMask, momentum>>(p1r2);
-                auto targetClone4 = partOp::deselect<pmacc::mp_list<multiMask, momentum>>(p2r1);
-                auto targetClone5 = partOp::deselect<pmacc::mp_list<multiMask, momentum>>(p2r2);
+                auto targetClone2 = partOp::deselect<pmacc::mp_list<multiMask, momentum, weighting>>(p1r1);
+                auto targetClone3 = partOp::deselect<pmacc::mp_list<multiMask, momentum, weighting>>(p1r2);
+                auto targetClone4 = partOp::deselect<pmacc::mp_list<multiMask, momentum, weighting>>(p2r1);
+                auto targetClone5 = partOp::deselect<pmacc::mp_list<multiMask, momentum, weighting>>(p2r2);
 
                 targetClone2.derive(worker, idGen, r1);
                 targetClone3.derive(worker, idGen, r2);
@@ -78,9 +79,13 @@ namespace picongpu::particles::fusion
                 targetClone5.derive(worker, idGen, r2);
 
                 p1r1[momentum_] = mom1;
+                p1r1[weighting_] = productWeighting/2.;
                 p1r2[momentum_] = mom1;
+                p1r2[weighting_] = productWeighting/2.;
                 p2r1[momentum_] = mom2;
+                p2r1[weighting_] = productWeighting/2.;
                 p2r2[momentum_] = mom2;
+                p2r2[weighting_] = productWeighting/2.;
             }
         };
 

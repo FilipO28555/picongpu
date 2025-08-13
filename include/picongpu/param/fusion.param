@@ -64,6 +64,8 @@ namespace picongpu
             constexpr uint32_t cellListChunkSize = std::min(TYPICAL_PARTICLES_PER_CELL, 4u);
             constexpr uint32_t pairListChunkSize = std::min(TYPICAL_PARTICLES_PER_CELL*TYPICAL_PARTICLES_PER_CELL, 16u);
 
+            constexpr float_X productMinWeighting = 0;
+            constexpr uint32_t maxFmult = 1e6;
         } // namespace collision
     } // namespace particles
 } // namespace picongpu

@@ -277,7 +277,7 @@ namespace picongpu
 
                     public:
                         template<typename T_Worker, typename T_Par0, typename T_Par1, typename T_RngHandle>
-                        DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, uint32_t duplicationCorrection, float3_X &mom1, float3_X &mom2, T_RngHandle& rngHandle){
+                        DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, uint32_t duplicationCorrection, float_X probabilityFactor, float3_X &mom1, float3_X &mom2, T_RngHandle& rngHandle){
                             // if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
                             //    && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
                                 // return;
@@ -293,8 +293,8 @@ namespace picongpu
 
                             float_X someEnergy = math::dot(par0[momentum_], par0[momentum_]);
                             float_X test_sigma = crossSection(someEnergy);
-
-                            test_sigma *= (rngValue < 0.01);
+                            float_X P = 0.01_X * probabilityFactor;
+                            test_sigma *= (rngValue < P);
 
                             float3_X dir = float3_X(0,1,0);
                             mom1 = dir*test_sigma;
