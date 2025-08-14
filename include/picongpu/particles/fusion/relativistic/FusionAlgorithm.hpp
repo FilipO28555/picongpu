@@ -268,11 +268,8 @@ namespace picongpu
                     template<typename T_CrossSection, bool ifDebug>
                     struct FusionAlg
                     {
-                        HDINLINE FusionAlg()
-                            : duplicationCorrection(1u) {};
-
+                        HDINLINE FusionAlg(){};
                         PMACC_ALIGN(crossSection, T_CrossSection);
-                        PMACC_ALIGN(duplicationCorrection, float_COLL);
 
 
                     public:
@@ -289,14 +286,32 @@ namespace picongpu
                             using UniformFloat = pmacc::random::distributions::Uniform<
                                 pmacc::random::distributions::uniform::ExcludeOne<float_COLL>::Reduced>;
                             auto rng = rngHandle.template applyDistribution<UniformFloat>();
-                            float_COLL rngValue = rng(worker);
+                            float_COLL rngValue1 = rng(worker);
+                            float_COLL rngValue2 = rng(worker);
+                            float_COLL rngValue3 = rng(worker);
 
                             float_X someEnergy = math::dot(par0[momentum_], par0[momentum_]);
                             float_X test_sigma = crossSection(someEnergy);
                             float_X P = 0.01_X * probabilityFactor;
-                            test_sigma *= (rngValue < P);
+                            test_sigma *= (rngValue1 < P);
 
-                            float3_X dir = float3_X(0,1,0);
+                            // rngValues 2 and 3 are used to generate the scattering angle
+                            float_COLL x1 = 2.0_COLL * rngValue2 - 1.0_COLL; // [-1,1]
+                            float_COLL x2 = 2.0_COLL * rngValue3 - 1.0_COLL; // [-1,1]
+                            while(x1 * x1 + x2 * x2 > 1.0_COLL)
+                            {
+                                // rejection sampling
+                                rngValue2 = rng(worker);
+                                rngValue3 = rng(worker);
+                                x1 = 2.0_COLL * rngValue2 - 1.0_COLL; // [-1,1]
+                                x2 = 2.0_COLL * rngValue3 - 1.0_COLL; // [-1,1]
+                            }
+                            float_COLL s = math::sqrt(1.0_COLL - x1 * x1 - x2 * x2);
+                            float_COLL x = 2.0_COLL * x1 * s;
+                            float_COLL y = 2.0_COLL * x2 * s;
+                            float_COLL z = 1.0_COLL - 2*(x * x + y * y);
+
+                            float3_X dir = float3_X(x, y, z);
                             mom1 = dir*test_sigma;
                             mom2 = -dir*test_sigma;
                         }
