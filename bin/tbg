@@ -37,38 +37,35 @@ function resolve_vars
 
     while read -r data_set
     do
-        unresolved_vars=$(echo "$data_set" | grep -o "\![[:alpha:]][[:alnum:]_]*")
-        unresolved_vars_old="dummy data for the first round"
+        prev="$data_set"
         # loop until all variables are resolved, if nothing is changing because of a cyclic dependency than stop
-        while [ -n  "$unresolved_vars" ] && [ "$unresolved_vars" != "$unresolved_vars_old" ]
-        do
-            for i in $unresolved_vars
-            do
-                var_name=${i/\!}
-                # check if variable is defined in the environment
-                if declare -p "$var_name" &>/dev/null ; then
-                    # do not evaluate the variable here because we can still have unresolved tbg variables
-                    var_value=$(printf '%s\n' "${!var_name}")
-                    data_set=${data_set/\!$var_name/$var_value}
-                fi
-            done
-            unresolved_vars_old="$unresolved_vars"
-            unresolved_vars=$(echo "$data_set" | grep -o "\![[:alpha:]][[:alnum:]_]*")
+        while [[ "$data_set" =~ \!([[:alpha:]][[:alnum:]_]*) ]]; do
+            var_name="${BASH_REMATCH[1]}"
+            # check if variable is defined in the environment
+            if [[ -v "$var_name" ]]; then
+                var_value="${!var_name}"
+                data_set="${data_set/!$var_name/$var_value}"
+            else
+                # unknown var -> stop replacing to avoid infinite loop
+                break
+            fi
+            [[ "$data_set" == "$prev" ]] && break
+            prev="$data_set"
         done
-        if [ -n  "$unresolved_vars" ] && [ "$unresolved_vars" == "$unresolved_vars_old" ] ; then
+        if [[ "$data_set" =~ \![[:alpha:]][[:alnum:]_]* ]]; then
             echo "Possible cyclic dependency detected or unknown variables used!" >&2
             echo "Check the following varaibles:" >&2
-            for i in $unresolved_vars
-            do
+            unresolved_vars=$(printf '%s\n' "$data_set" | grep -o "\![[:alpha:]][[:alnum:]_]*")
+            for i in $unresolved_vars; do
                 echo "  $i" >&2
             done
         fi
 
-        var=$(echo -e "$data_set" | cut -d"=" -f1)
-        var_value=$(echo -e "$data_set" | cut -d"=" -f2-)
+        var="${data_set%%=*}"
+        var_value="${data_set#*=}"
 
         var_value=$(eval echo "$var_value")
-        if echo "$data_set" | grep -q -e '^.*$(' -e  '^.*${' ; then
+        if [[ "$data_set" == *'$('* || "$data_set" == *'${'* ]]; then
           # the right hand side contains expressions in form of $( or ${ therefore we evaluate it explicitly
           export "$var=$var_value"
         else
@@ -87,22 +84,24 @@ function resolve_data_stream
 
     while IFS= read -r data_set
     do
-        unresolved_vars=$(echo "$data_set" | grep -o "\![[:alpha:]][[:alnum:]_]*")
-        for i in $unresolved_vars
-        do
-            var_name=${i/\!}
+        prev="$data_set"
+        while [[ "$data_set" =~ \!([[:alpha:]][[:alnum:]_]*) ]]; do
+            var_name="${BASH_REMATCH[1]}"
             # check if variable is defined in the environment
-            if declare -p "$var_name" &>/dev/null ; then
-                var_value=$(eval echo \$$var_name)
-                data_set=${data_set/\!$var_name/$var_value}
+            if [[ -v "$var_name" ]]; then
+                var_value="${!var_name}"
+                data_set="${data_set/!$var_name/$var_value}"
+            else
+                break
             fi
+            [[ "$data_set" == "$prev" ]] && break
+            prev="$data_set"
         done
-        unresolved_vars=$(echo "$data_set" | grep -o "\![[:alpha:]][[:alnum:]_]*")
-        if [ -n  "$unresolved_vars" ] ; then
+        if [[ "$data_set" =~ \![[:alpha:]][[:alnum:]_]* ]]; then
             echo "Unknown variables used in template file!" >&2
             echo "Check the following varaibles:" >&2
-            for i in $unresolved_vars
-            do
+            unresolved_vars=$(printf '%s\n' "$data_set" | grep -o '![[:alpha:]][[:alnum:]_]*')
+            for i in $unresolved_vars; do
                 echo "  $i" >&2
             done
         fi
@@ -125,14 +124,18 @@ function apply_extra_vars
     eval extra_op="\$$2"
     while read -r data_set
     do
-        echo "$data_set" | grep "^[[:blank:]]*[[:alpha:]][[:alnum:]_]*=.*" &>/dev/null
-        if [ $? -eq 0 ] ; then
+        if [[ "$data_set" =~ ^[[:space:]]*[[:alpha:]][[:alnum:]_]*=.* ]]; then
             # get variable name (left side of assign)
-            var=$(echo -e "$data_set" | cut -d"=" -f1)
+            var="${data_set%%=*}"
             # check if variable must be overwritten
-            op=$(echo -e "$extra_op" | tr " " "\n" | grep "$var=")
-            if [ $? -eq 0 ] ; then
-                # overwrite variable assignment
+            op=""
+            for word in $extra_op; do
+                if [[ "$word" == "$var="* ]]; then
+                    op="$word"
+                    break
+                fi
+            done
+            if [[ -n "$op" ]]; then
                 echo "$op"
             else
                 # data_set is a assignment but variable not contained in $2
@@ -185,7 +188,7 @@ function run_cfg_and_set_solved_variables
     eval "$cfg_script_overwritten" # name and path to cfg file
 
     # collect variable definitions from the cfg file
-    cfg_script_overwritten_vars=$(echo -e "$cfg_script_overwritten" | grep -o "^[[:blank:]]*[[:alpha:]][[:alnum:]_]*" | tr -d "=")
+    cfg_script_overwritten_vars=$(echo -e "$cfg_script_overwritten" | grep -o '^[[:blank:]]*[[:alpha:]][[:alnum:]_]*' | tr -d "=")
     cfg_script_overwritten_vars=$(echo -e "$cfg_script_overwritten_vars" | sort | while read var; do [ -z "${!var}" ] || echo $var=${!var} ; done)
 
     # get all variable assignments (form: `.var=value`) from the tpl file
@@ -219,7 +222,7 @@ function check_final
     final_file="$1"
     org_file="$2"
 
-    not_replaced=$(grep -o "\![[:alpha:]][[:alnum:]_]*" $final_file | sort | uniq)
+    not_replaced=$(grep -o '![[:alpha:]][[:alnum:]_]*' $final_file | sort | uniq)
     not_replaced_cnt=$(echo $not_replaced | wc -w)
 
     if [ $not_replaced_cnt -gt 0 ] ; then
@@ -402,17 +405,17 @@ if [ ! -f "$cfg_file" ] ; then
 fi
 
 # cfg file sanity check - space after \ at EOL ?
-cfg_err=$(egrep '\\\\\[ \t]+$' $cfg_file | wc -l)
+cfg_err=$(grep -cE '\\[[:blank:]]+$' $cfg_file)
 if [ $cfg_err != 0 ] ; then
     echo "ERROR: file \"$cfg_file\" contains spaces after line continuation \\"
     echo "Check the following lines for end-of-line spaces:"
     echo ""
-    egrep -n "\\\[ \t]+$" $cfg_file
+    grep -nE '\\[[:blank:]]+$' $cfg_file
     echo ""
     echo "Run the following command on the file to remove your"
     echo "end-of-line (EOL) white spaces:"
     echo ""
-    echo "sed -i 's/[ \t]\+$//' $cfg_file"
+    echo "sed -i 's/[[:blank:]]\\+$//' $cfg_file"
     exit 1;
 fi
 
