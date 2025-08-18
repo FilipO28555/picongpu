@@ -45,9 +45,9 @@ namespace picongpu::particles::fusion
                     IdGenerator& idGen,
                 T_ParAccessor0 const& r1,
                 T_ParAccessor1 const& r2,
-                float_X const& productWeighting,
-                float3_X const& mom1,
-                float3_X const& mom2,
+                float_X &productWeighting,
+                float3_X &mom1,
+                float3_X &mom2,
                 T_ParAccessor2& p1r1, // product 1 at pos 1
                 T_ParAccessor2& p1r2, // product 1 at pos 2
                 T_ParAccessor3& p2r1, // product 2 at pos 1
@@ -78,14 +78,20 @@ namespace picongpu::particles::fusion
                 targetClone4.derive(worker, idGen, r1);
                 targetClone5.derive(worker, idGen, r2);
 
+                // we are creating two particles, so we need to set the weighting
+                productWeighting = productWeighting/2._X;
+                // momentum is weighted with weighting
+                mom1 = mom1 * productWeighting;
+                mom2 = mom2 * productWeighting;
+
                 p1r1[momentum_] = mom1;
-                p1r1[weighting_] = productWeighting/2.;
+                p1r1[weighting_] = productWeighting;
                 p1r2[momentum_] = mom1;
-                p1r2[weighting_] = productWeighting/2.;
+                p1r2[weighting_] = productWeighting;
                 p2r1[momentum_] = mom2;
-                p2r1[weighting_] = productWeighting/2.;
+                p2r1[weighting_] = productWeighting;
                 p2r2[momentum_] = mom2;
-                p2r2[weighting_] = productWeighting/2.;
+                p2r2[weighting_] = productWeighting;
             }
         };
 

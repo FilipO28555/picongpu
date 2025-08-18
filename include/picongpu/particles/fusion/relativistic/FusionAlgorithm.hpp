@@ -274,7 +274,7 @@ namespace picongpu
 
                     public:
                         template<typename T_Worker, typename T_Par0, typename T_Par1, typename T_RngHandle>
-                        DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, uint32_t duplicationCorrection, float_X probabilityFactor, float3_X &mom1, float3_X &mom2, T_RngHandle& rngHandle){
+                        DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, float_X weightingR1, float_X weightingR2, float_X probabilityFactor, float3_X &mom1, float3_X &mom2, T_RngHandle& rngHandle){
                             // if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
                             //    && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
                                 // return;
@@ -292,7 +292,7 @@ namespace picongpu
 
                             float_X someEnergy = math::dot(par0[momentum_], par0[momentum_]);
                             float_X test_sigma = crossSection(someEnergy);
-                            float_X P = 0.01_X * probabilityFactor;
+                            float_X P = 0.01_X * probabilityFactor * weightingR1 * weightingR2;
                             test_sigma *= (rngValue1 < P);
 
                             // rngValues 2 and 3 are used to generate the scattering angle
@@ -311,6 +311,9 @@ namespace picongpu
                             float_COLL y = 2.0_COLL * x2 * s;
                             float_COLL z = 1.0_COLL - 2*(x * x + y * y);
 
+
+                            // returns momentum of one particle - not multiplied by weighting.
+                            // Multiplication by weighting is later in creation of particles
                             float3_X dir = float3_X(x, y, z);
                             mom1 = dir*test_sigma;
                             mom2 = -dir*test_sigma;

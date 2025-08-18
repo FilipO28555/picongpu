@@ -294,7 +294,7 @@ namespace picongpu::particles::fusion
             reactant1CellList.finalize(worker, deviceHeapHandle);
             reactant2CellList.finalize(worker, deviceHeapHandle);
             // Free the memory allocated for the weighting array
-            // finalizeWeightArray(worker, deviceHeapHandle, weightArray);
+            finalizeWeightArray(worker, deviceHeapHandle, weightArray);
         }
 
 
@@ -418,13 +418,15 @@ namespace picongpu::particles::fusion
             PMACC_SMEM(worker, product2FillLevel, uint32_t);
             // correction factor from Wu et al. 2022, DOI: 10.1063/5.0051178
             PMACC_SMEM(worker, correctionFactor, memory::Array<float_X, numCellsPerSuperCell>); //scalar used for correction factor. n_a/n_ba=n_a/min(w1,w2)
+            worker.sync(); // do we need this sync after declaring shared memory?
             // for every cell sum the minimum weighting of the reactants
-
             for(uint32_t i = worker.workerIdx(); i < numCellsPerSuperCell; i += worker.numWorkers())
             {
+                correctionFactor[i] = 0._X; // initialize to zero
                 uint32_t const size1 = reactant1CellList.numParticles[i];
                 uint32_t const size2 = reactant2CellList.numParticles[i];
-                if (size1 == 0 || size2 == 0) continue;
+                if (size1 == 0 || size2 == 0)
+                    continue;
 
                 bool const isList1Longer = (size1 >= size2);
                 uint32_t const maxNumParticles = isList1Longer ? size1 : size2;
@@ -432,15 +434,14 @@ namespace picongpu::particles::fusion
 
                 auto accessor1 = reactant1CellList.getParticlesAccessor(i);
                 auto accessor2 = reactant2CellList.getParticlesAccessor(i);
-                correctionFactor[i] = 0._X; // initialize to zero
                 for(uint32_t j = 0; j < maxNumParticles; ++j)
                 {
                     auto reactant1 = accessor1[j % size1];
                     auto reactant2 = accessor2[j % size2];
                     auto duplicationFactor = duplicationCorrection(j, minNumParticles, maxNumParticles);
                     
-                    float_X weightingR1 = reactant1[weighting_];
-                    float_X weightingR2 = reactant2[weighting_];
+                    float_X weightingR1 = reactant1[weighting_] / (isList1Longer ? 1 : duplicationFactor);
+                    float_X weightingR2 = reactant2[weighting_] / (isList1Longer ? duplicationFactor : 1);
                     bool const isWeightingR1Greater = (weightingR1 >= weightingR2);
                     correctionFactor[i] += (isWeightingR1Greater ? weightingR2 : weightingR1);
                 }
@@ -528,8 +529,10 @@ namespace picongpu::particles::fusion
                         auto reactant2 = accessor2[i % size2];
                         auto duplicationFactor = duplicationCorrection(i, minNumParticles, maxNumParticles);
                         
-                        float_X weightingR1 = reactant1[weighting_];
-                        float_X weightingR2 = reactant2[weighting_];
+                        
+                        float_X weightingR1 = reactant1[weighting_] / (isList1Longer ? 1 : duplicationFactor);
+                        float_X weightingR2 = reactant2[weighting_] / (isList1Longer ? duplicationFactor : 1);
+
                         bool const isWeightingR1Greater = (weightingR1 >= weightingR2);
                         float_X const minWeighting = isWeightingR1Greater ? weightingR2 : weightingR1;
                         float_X Fmult = maxFmult; 
@@ -538,11 +541,9 @@ namespace picongpu::particles::fusion
                             Fmult = std::max(1._X,minWeighting/productMinWeighting);
                             productWeighting = minWeighting/Fmult;
                         }
-                        productWeighting = minWeighting;
-                        Fmult = 1._X;
                         if constexpr (debugFusion){
-                            printf("Worker %d, cell %d, i: %d, Fmult: %u, productWeighting: %f\n",
-                                worker.workerIdx(), cellIdx, i, Fmult, productWeighting);
+                            printf("Worker %d, cell %d, i: %d, Fmult: %f, productWeighting: %f, minWeighting: %f\n",
+                                worker.workerIdx(), cellIdx, i, Fmult, productWeighting, minWeighting);
                         }
 
                         float3_X product1Momentum{0._X};
@@ -557,7 +558,7 @@ namespace picongpu::particles::fusion
                             }
                         // The actual fusion physics calculation
                         T_SrcCollisionFunctor fuser = collisionFunctor;
-                        fuser().fuse(worker, reactant1, reactant2, duplicationFactor, probabilityCorrectionFactor, product1Momentum, product2Momentum, rngHandle);
+                        fuser().fuse(worker, reactant1, reactant2, weightingR1, weightingR2, probabilityCorrectionFactor, product1Momentum, product2Momentum, rngHandle);
 
                         // If a reaction occurred, create the product particles
                         if (product1Momentum != float3_X{0._X} || product2Momentum != float3_X{0._X})
@@ -617,17 +618,19 @@ namespace picongpu::particles::fusion
                     for(int i = chunkStart + worker.workerIdx(); i<chunkStart+minNumParticles && i < maxNumParticles; i += step){
                         float_X const oldWeighting1 = accessor1[i % size1][weighting_];
                         float_X const oldWeighting2 = accessor2[i % size2][weighting_];
-                        accessor1[i % size1][multiMask_] = (oldWeighting1 > 1e-6);
-                        accessor2[i % size2][multiMask_] = (oldWeighting2 > 1e-6);
                         // change the reactant particles according to the weighting array
                         // accessor1[i % size1][weighting_] =std::max(0, accessor1[i % size1][weighting_] - weightingArray[i]);
                         // accessor2[i % size2][weighting_] =std::max(0, accessor2[i % size2][weighting_] - weightingArray[i]);
                         accessor1[i % size1][weighting_] -= weightingArray[i];
                         accessor2[i % size2][weighting_] -= weightingArray[i];
-                        
+
+                        accessor1[i % size1][multiMask_] = (accessor1[i % size1][weighting_] > 1e-6);
+                        accessor2[i % size2][multiMask_] = (accessor2[i % size2][weighting_] > 1e-6);
+
                         // change the momenta as well
                         accessor1[i % size1][momentum_] *= accessor1[i % size1][weighting_] / oldWeighting1;
                         accessor2[i % size2][momentum_] *= accessor2[i % size2][weighting_] / oldWeighting2;
+                        
                         if( accessor1[i % size1][weighting_]<1e-6){
                             // printf("Deleting Particle: Worker %d, cell %d, i: %d, weighting1: %f, momentum1: %f, %f, %f\n",
                             //     worker.workerIdx(), cellIdx, i,
