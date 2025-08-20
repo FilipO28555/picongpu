@@ -41,25 +41,30 @@ namespace picongpu
                     {
                         DINLINE float_COLL operator()(float_COLL const& Energy) const
                         {
-                            return T_Param::C1/T_Param::C2*Energy;
+                            float_COLL const Snum = ((((Energy*T_Param::A5)+T_Param::A4)*Energy
+                                + T_Param::A3)*Energy + T_Param::A2)*Energy + T_Param::A1;
+                            float_COLL const Sden = (((((Energy*T_Param::B4)+T_Param::B3)*Energy
+                                + T_Param::B2)*Energy + T_Param::B1)*Energy + 1._COLL);
+                            float_COLL const S = Snum / Sden;
+                            float_COLL const Eexp = Energy * math::exp(T_Param::BG/math::sqrt(Energy));
+                            return S / Eexp;
                         }
                     };
 
                 } // namespace acc
 
-                template<typename T_Param, bool ifDebug>
+                template<typename T_Param>
                 struct FusionFunctorImpl
                 {
                     template<typename T_Species0, typename T_Species1, typename T_Species2, typename T_Species3>
                     struct apply
                     {
-                        using type = FusionFunctorImpl<T_Param, ifDebug>;
+                        using type = FusionFunctorImpl<T_Param>;
                     };
 
-                    static constexpr bool ifDebug_m = ifDebug;
                     HINLINE FusionFunctorImpl(uint32_t currentStep) {};
 
-                    using AccFunctorImpl = acc::FusionAlg<acc::CalcCrossSection<T_Param>, ifDebug>;
+                    using AccFunctorImpl = acc::FusionAlg<acc::CalcCrossSection<T_Param>>;
                     using AccFunctor = fusion::acc::IBinary<AccFunctorImpl>;
                     // define kernel that should be used to call this functor
                     using CallingInterKernel = InterCollision;

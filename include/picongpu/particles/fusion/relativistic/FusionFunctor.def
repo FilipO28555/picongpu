@@ -28,7 +28,7 @@ namespace picongpu
         {
             namespace relativistic
             {
-                template<typename T_Param, bool ifDebug>
+                template<typename T_Param>
                 struct FusionFunctorImpl;
 
                 /** Host side binary collision functor for using a constant coulomb logarithm value
@@ -38,8 +38,8 @@ namespace picongpu
                  *      pair of species) with an average coulomb log and s parameter (averaged over all collisions
                  *      in the whole simulation, for each timestep)
                  */
-                template<typename T_Param, bool ifDebug = false>
-                using FusionFunctor = FusionFunctorImpl<T_Param, ifDebug>;
+                template<typename T_Param>
+                using FusionFunctor = FusionFunctorImpl<T_Param>;
             } // namespace relativistic
         } // namespace collision
     } // namespace particles
