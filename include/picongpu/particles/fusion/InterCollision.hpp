@@ -556,8 +556,8 @@ namespace picongpu::particles::fusion
                             }
                         // The actual fusion physics calculation
                         T_SrcCollisionFunctor fuser = collisionFunctor;
-                        fuser().template fuse<T_Product1ParBox, T_Product2ParBox>(worker, reactant1, reactant2, weightingR1, weightingR2, probabilityCorrectionFactor, product1Momentum, product2Momentum, rngHandle);
-
+                                                fuser().template fuse<T_Product1ParBox, T_Product2ParBox>(worker, reactant1, reactant2, weightingR1, weightingR2, probabilityCorrectionFactor, product1Momentum, product2Momentum, rngHandle);
+                                                
                         // If a reaction occurred, create the product particles
                         if (product1Momentum != float3_X{0._X} || product2Momentum != float3_X{0._X})
                         {
