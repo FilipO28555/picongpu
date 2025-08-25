@@ -73,12 +73,13 @@ namespace picongpu
                         PMACC_ALIGN(labMomentum1, float3_COLL);
                         PMACC_ALIGN(mass0, float_COLL);
                         PMACC_ALIGN(mass1, float_COLL);
-                        // PMACC_ALIGN(massProduct1, float_COLL); // These are not used
-                        // PMACC_ALIGN(massProduct2, float_COLL); // These are not used
+                        
                         PMACC_ALIGN(V_cm, float3_COLL);
                         PMACC_ALIGN(gamma_cm, float_COLL);
                         PMACC_ALIGN(factorA, float_COLL);
-                        PMACC_ALIGN(E_cm_tot, float_COLL); // Total energy in CM frame
+                        PMACC_ALIGN(E_cm_tot_sq, float_COLL);     // total CM energy squared
+                        PMACC_ALIGN(E_cm_tot, float_COLL);     // total CM energy
+                        PMACC_ALIGN(E_r, float_COLL); // CM 'relative' kinetic energy
                         PMACC_ALIGN(V_rel_mag, float_COLL); // Magnitude of relative velocity for cross-section
 
                         template<typename T_Par0, typename T_Par1>
@@ -94,89 +95,54 @@ namespace picongpu
                             float_COLL const E_tot_lab = E0_lab + E1_lab;
                             float3_COLL const p_tot_lab = labMomentum0 + labMomentum1;
 
-                            // --- Calculate Invariant CM Energy and CM Velocity ---
-                            // The square of the total CM energy is the invariant mass squared of the system.
-                            float_COLL const E_cm_tot_sq = E_tot_lab * E_tot_lab - pmacc::math::l2norm2(p_tot_lab) * c2;
+                            // --- Invariant CM energy (s) and CM velocity ---
+                            E_cm_tot_sq = E_tot_lab * E_tot_lab - pmacc::math::l2norm2(p_tot_lab) * c2;
+                            E_cm_tot_sq = math::max(E_cm_tot_sq, 0.0_COLL);            // guard
                             E_cm_tot = math::sqrt(E_cm_tot_sq);
 
-                            // CM velocity is needed for the inverse boost.
+                            // Velocity of the CM frame in the Lab frame
                             V_cm = p_tot_lab * c2 / E_tot_lab;
+                            float_COLL const beta2 = pmacc::math::l2norm2(V_cm) / c2;
+                            gamma_cm = 1.0_COLL / math::sqrt(1.0_COLL - beta2);
 
-                            // --- Calculate parameters for the inverse boost ---
-                            float_COLL const V_cm_mag_sq = pmacc::math::l2norm2(V_cm);
-                            if (V_cm_mag_sq > 1.e-32_COLL) // Use a safe epsilon
-                            {
-                                gamma_cm = 1.0_COLL / math::sqrt(1.0_COLL - V_cm_mag_sq / c2);
-                                factorA = (gamma_cm - 1.0_COLL) / V_cm_mag_sq;
-                            }
-                            else
-                            {
-                                gamma_cm = 1.0_COLL;
-                                factorA = 0.5_COLL / c2; // Non-relativistic limit: (gamma-1)/v^2 -> 1/(2c^2)
-                            }
-                            // instead of if:
-                            // // Note: A small V_cm_mag_sq could still lead to gamma_cm being exactly 1.0
-                            // // due to precision limits, which is safe in the formula below.
-                            // gamma_cm = 1.0_COLL / math::sqrt(1.0_COLL - V_cm_mag_sq / c2);
+                            // (gamma-1)/V^2 = gamma^2 / [c^2 (gamma+1)]  (stable as V->0)
+                            factorA = (gamma_cm * gamma_cm) / (c2 * (gamma_cm + 1.0_COLL));
 
-                            // // This numerically stable, branchless formula avoids the 0/0 problem
-                            // // for small V_cm. It is equivalent to (gamma_cm - 1.0) / V_cm_mag_sq.
-                            // factorA = gamma_cm * gamma_cm / (c2 * (gamma_cm + 1.0_COLL));
-
-
-
-                            // --- Calculate relative velocity for cross-section ---
-                            // This is needed for the probability calculation.
-                            // s = (p0_4 + p1_4)^2 = E_cm_tot^2
+                            // --- Invariants for v_rel and E_r ---
+                            //(Cannoni) = https://arxiv.org/abs/1605.00569v2
                             float_COLL const s = E_cm_tot_sq;
-                            float_COLL const p_cm_mag_sq =
-                                (s - (mass0 + mass1) * (mass0 + mass1) * c4) *
-                                (s - (mass0 - mass1) * (mass0 - mass1) * c4) / (4.0_COLL * s);
-                            V_rel_mag = math::sqrt(p_cm_mag_sq) * s / (E_cm_tot * mass0 * mass1 * c3);
+                            float_COLL const m0c2 = mass0 * c2;
+                            float_COLL const m1c2 = mass1 * c2;
+
+                            // Lorentz factor of the relative motion (Cannoni eq. (42))
+                            float_COLL const gamma_r = (s - m0c2*m0c2 - m1c2*m1c2) / (2.0_COLL * m0c2 * m1c2);
+                            float_COLL const gamma_r_clamped = math::max(gamma_r, 1.0_COLL);
+                            // Relative velocity magnitude |v_rel| (Cannoni inv eq. (32))
+                            V_rel_mag = c * math::sqrt(1.0_COLL - 1.0_COLL / (gamma_r_clamped * gamma_r_clamped));
+
+                            // CM 'relative' kinetic energy E_r = mu c^2 (gamma_r - 1)
+                            float_COLL const mu = (mass0 * mass1) / (mass0 + mass1);
+                            E_r = mu * c2 * (gamma_r_clamped - 1.0_COLL);
                         }
 
                         template<typename T_Product0Box, typename T_Product1Box>
-                        DINLINE void P_gemini(float3_COLL const& dir)
+                        DINLINE void P(float3_COLL const& dir)
                         {
                             // --- Define reaction properties ---
                             float_COLL const mP0 = picongpu::traits::frame::getMass<typename T_Product0Box::FrameType>();
                             float_COLL const mP1 = picongpu::traits::frame::getMass<typename T_Product1Box::FrameType>();
+                            float_COLL const Q = (mass0 + mass1 - mP0 - mP1) * c2; // Q-value of the reaction
 
-                                                        // --- FINAL DEBUG: Manually define product masses in PIC units ---
-                            // This test overrides the suspected faulty compile-time mass retrieval.
-                            // constexpr float_COLL amu = 1.0_COLL / 5.48579909065e-4_COLL;
-                            // constexpr float_COLL mP0 = 1.00866491595_COLL * amu; // Neutron mass
-                            // constexpr float_COLL mP1 = 4.00260325413_COLL * amu; // He4 mass
-
-                            // --- DEBUG: Manually inject the Q-value in correct PIC units ---
-                            // This is a test to verify the rest of the kinematic calculations.
-
-                            // // 1. Define masses in SI units (kg)
-                            // constexpr float_64 U_SI = 1.66053906660e-27; // atomic mass unit in kg
-                            // constexpr float_64 C_SI = 299792458.0;       // speed of light in m/s
-                            // constexpr float_64 M_D_SI  = 2.01410177812 * U_SI;
-                            // constexpr float_64 M_T_SI  = 3.0160492779  * U_SI;
-                            // constexpr float_64 M_N_SI  = 1.00866491595 * U_SI;
-                            // constexpr float_64 M_HE4_SI= 4.00260325413 * U_SI;
-
-                            // // 2. Calculate Q-value in SI units (Joules)
-                            // constexpr float_64 MASS_DEFECT_SI = (M_D_SI + M_T_SI) - (M_N_SI + M_HE4_SI);
-                            // constexpr float_64 Q_VALUE_SI = MASS_DEFECT_SI * C_SI * C_SI;
-
-                            // // 3. Convert Q-value from Joules to PIC energy units
-                            // // sim.unit.energy() gives the value of 1 PIC energy unit in Joules.
-                            // constexpr float_COLL Q_value_pic = Q_VALUE_SI / sim.unit.energy();
-
-                            // // 4. Add the correctly-scaled Q-value to the total CM energy
-                            // float_COLL const E_cm_tot_with_Q = E_cm_tot + Q_value_pic;
-                            
-                            // // Relativistic formula for the TOTAL energy of product 0 in the CM frame
-                            // // We use the energy WITH the manually added Q-value.
-                            // float_COLL const E_p0_tot_cm = (E_cm_tot_with_Q * E_cm_tot_with_Q + (mP0 * mP0 - mP1 * mP1) * c4) / (2.0_COLL * E_cm_tot_with_Q);
-                            // // TOTAL energy of product 1
-                            // float_COLL const E_p1_tot_cm = E_cm_tot_with_Q - E_p0_tot_cm;
-
-
+                            // debug or necessary? -> it can happen only for endothermic reactions and the cross sections should be zero than?
+                            float_COLL const mP0c2 = mP0 * c2;
+                            float_COLL const mP1c2 = mP1 * c2;
+                            if (E_cm_tot < (mP0c2 + mP1c2)) {
+                                printf("Warning: Fusion reaction energy is too low for product masses. E_cm_tot: %f, mP0c2: %f, mP1c2: %f\n",
+                                       E_cm_tot, mP0c2, mP1c2);
+                                labMomentum0 = float3_COLL::create(0);
+                                labMomentum1 = float3_COLL::create(0);
+                                return;
+                            }
 
                             // Relativistic formula for the TOTAL energy of product 0 in the CM frame
                             float_COLL const E_p0_tot_cm = (E_cm_tot * E_cm_tot + (mP0 * mP0 - mP1 * mP1) * c4) / (2.0_COLL * E_cm_tot);
@@ -187,12 +153,10 @@ namespace picongpu
 
                             // --- Calculate Product Momenta (CM Frame) ---
                             // Magnitude of momentum for product 0, from p = sqrt(E_tot^2 - (mc^2)^2) / c
-                            float_COLL const p0_mag_cm = math::sqrt(E_p0_tot_cm * E_p0_tot_cm - mP0 * mP0 * c4) / c;
-
+                            float_COLL const p0_mag_cm = math::sqrt(E_cm_tot_sq - mP0 * mP0 * c4) / c;
                             // Momentum vectors in the CM frame
                             float3_COLL const p0_cm = p0_mag_cm * dir;
                             float3_COLL const p1_cm = -p0_cm;
-
 
                             // --- Inverse Lorentz Boost back to Lab Frame ---
                             // We apply the reverse transformation using the pre-calculated V_cm and gamma_cm.
@@ -240,8 +204,6 @@ namespace picongpu
                             Variables v{par0, par1, weightingR1, weightingR2};
 
                             // Convert energy from PIC units to keV
-                            // The E_r calculation has been removed. We need to calculate the kinetic energy in the CM frame.
-                            float_COLL const E_kin_cm = v.E_cm_tot - (v.mass0 + v.mass1) * c2;
                             constexpr float_COLL picEnergy_to_Joule = sim.unit.energy();
                             constexpr float_COLL joule_to_eV = 1.0 / sim.si.get_eV();
                             constexpr float_COLL eV_to_keV = 1e-3;
@@ -254,7 +216,7 @@ namespace picongpu
                             constexpr float_COLL millibarn_to_picArea = millibarn_to_m2 * m2_to_picArea;
 
                             // Apply conversions
-                            float_X sigma_picArea = crossSection(E_kin_cm * convToKeV) * millibarn_to_picArea;
+                            float_X sigma_picArea = crossSection(v.E_r * convToKeV) * millibarn_to_picArea;
                             float_X P = probabilityFactor * sigma_picArea * v.V_rel_mag * v.gamma_cm;
 
                             // Get a random float value from 0,1
@@ -294,7 +256,7 @@ namespace picongpu
                                 // returns momentum of one particle - not multiplied by weighting.
                                 // Multiplication by weighting is later in creation of particles
                                 float3_COLL const dir = float3_COLL(x, y, z);
-                                v.P_gemini<T_Product0Box, T_Product1Box>(dir);
+                                v.P<T_Product0Box, T_Product1Box>(dir);
                                 mom0 = v.P0();
                                 mom1 = v.P1();
 
