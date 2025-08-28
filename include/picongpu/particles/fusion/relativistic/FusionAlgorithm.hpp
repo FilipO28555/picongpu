@@ -62,8 +62,12 @@ namespace picongpu
                         // which is E = sqrt(p^2 * c^2 + m^2 * c^4)
                         // where p is the magnitude of the 3-momentum vector.
 
-                        T_Float const p_sq = pmacc::math::l2norm2(momentum);
-                        return math::sqrt(p_sq * c2 + mass * mass * c4);
+                        // T_Float const p_sq = pmacc::math::l2norm2(momentum);
+                        // return math::sqrt(p_sq * c2 + mass * mass * c4);
+
+                        // gamma*m*c^2 - probably more numerically stable
+                        return picongpu::gamma<float_COLL>(momentum, mass) * mass * c2;
+
                     }
 
                     //! Stores some precalculated values used in the collision algorithm
@@ -83,9 +87,9 @@ namespace picongpu
                         PMACC_ALIGN(V_rel_mag, float_COLL); // Magnitude of relative velocity for cross-section
 
                         template<typename T_Par0, typename T_Par1>
-                        DINLINE Variables(T_Par0 const& par0, T_Par1 const& par1, float_X const weight0, float_X const weight1)
-                            : labMomentum0(precisionCast<float_COLL>(par0[momentum_]) / weight0)
-                            , labMomentum1(precisionCast<float_COLL>(par1[momentum_]) / weight1)
+                        DINLINE Variables(T_Par0 const& par0, T_Par1 const& par1)
+                            : labMomentum0(precisionCast<float_COLL>(par0[momentum_]) / par0[weighting_])
+                            , labMomentum1(precisionCast<float_COLL>(par1[momentum_]) / par1[weighting_])
                             , mass0(precisionCast<float_COLL>(picongpu::traits::attribute::getMass(1, par0)))
                             , mass1(precisionCast<float_COLL>(picongpu::traits::attribute::getMass(1, par1)))
                         {
@@ -131,7 +135,7 @@ namespace picongpu
                             // --- Define reaction properties ---
                             float_COLL const mP0 = picongpu::traits::frame::getMass<typename T_Product0Box::FrameType>();
                             float_COLL const mP1 = picongpu::traits::frame::getMass<typename T_Product1Box::FrameType>();
-                            float_COLL const Q = (mass0 + mass1 - mP0 - mP1) * c2; // Q-value of the reaction
+                            // float_COLL const Q = (mass0 + mass1 - mP0 - mP1) * c2; // Q-value of the reaction - no need because we have E_cm_tot
 
                             // debug or necessary? -> it can happen only for endothermic reactions and the cross sections should be zero than?
                             float_COLL const mP0c2 = mP0 * c2;
@@ -197,11 +201,12 @@ namespace picongpu
                     public:
                         template<typename T_Product0Box, typename T_Product1Box, typename T_Worker, typename T_Par0, typename T_Par1, typename T_RngHandle>
                         DINLINE void fuse(T_Worker const& worker, T_Par0 par0, T_Par1 par1, float_X weightingR1, float_X weightingR2, float_X probabilityFactor, float3_X &mom0, float3_X &mom1, T_RngHandle& rngHandle){
-                            // if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
-                            //    && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
-                            //     return;
+                            if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
+                               && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
+                                return;
                             // calculate boost and relative energy
-                            Variables v{par0, par1, weightingR1, weightingR2};
+                            Variables v{par0, par1};
+
 
                             // Convert energy from PIC units to keV
                             constexpr float_COLL picEnergy_to_Joule = sim.unit.energy();
@@ -215,7 +220,11 @@ namespace picongpu
                             constexpr float_COLL m2_to_picArea = 1.0 / (picLength_to_m * picLength_to_m);
                             constexpr float_COLL millibarn_to_picArea = millibarn_to_m2 * m2_to_picArea;
 
+                            // get pic velocity to m/s -> debug
+                            constexpr float_COLL picVelocity_to_m_per_s = sim.unit.length() / sim.unit.time();
+
                             // Apply conversions
+                            float_X sigma_milibarns = crossSection(v.E_r * convToKeV);
                             float_X sigma_picArea = crossSection(v.E_r * convToKeV) * millibarn_to_picArea;
                             float_X P = probabilityFactor * sigma_picArea * v.V_rel_mag * v.gamma_cm;
 
@@ -227,9 +236,21 @@ namespace picongpu
                             if constexpr(alwaysFuseQ) P=1.0_COLL; // always fuse if this is set to true
 
                             // print with probability 1e-2
-                            if (debugFusion || (worker.workerIdx() == 0 && rng(worker) < 1e-2))
-                            printf("Worker %d,millibarn_to_picArea: %e, sigma_picArea: %e, probabilityFactor: %e, v.V_rel: %e, v.gamma_cm: %e, P: %e\n",
-                                   worker.workerIdx(), millibarn_to_picArea, sigma_picArea, probabilityFactor, v.V_rel_mag, v.gamma_cm, P);
+                            if (debugFusion || (worker.workerIdx() == 0 && rng(worker) < 1e-8)){
+                                printf("Worker %d,millibarn_to_picArea: %e, sigma_milibarns: %e, probabilityFactor: %e, v.V_rel [m/s]: %e, v.gamma_cm: %e, P: %e\n",
+                                   worker.workerIdx(), millibarn_to_picArea, sigma_milibarns, probabilityFactor, v.V_rel_mag*picVelocity_to_m_per_s, v.gamma_cm, P);
+                                printf("E_r [keV]: %f, sigma [mb]: %f\n",
+                                   v.E_r * convToKeV, sigma_milibarns);
+                                // print momenta
+                                printf("  Reactant 1: weight: %f, mass: %f, momentum: %f, %f, %f, energy: %f\n",
+                                   weightingR1, v.mass0,
+                                   par0[momentum_][0], par0[momentum_][1], par0[momentum_][2],
+                                   energy<float_X>(par0[momentum_], v.mass0));
+                                printf("  Reactant 2: weight: %f, mass: %f, momentum: %f, %f, %f, energy: %f\n",
+                                   weightingR2, v.mass1,
+                                   par1[momentum_][0], par1[momentum_][1], par1[momentum_][2],
+                                   energy<float_X>(par1[momentum_], v.mass1));
+                            }
 
                             if(rngValue1 < P){
 

@@ -609,8 +609,7 @@ namespace picongpu::particles::fusion
                     worker.sync();
                 } // end chunk loop
 
-
-                // do the magic with weighting and changing momenta
+                // --- 5b. Update Reactant Particles ---
                 uint32_t step = std::min(worker.numWorkers(), minNumParticles);
                 for (uint32_t chunkStart = 0; chunkStart < maxNumParticles; chunkStart += minNumParticles){
                     for(int i = chunkStart + worker.workerIdx(); i<chunkStart+minNumParticles && i < maxNumParticles; i += step){
