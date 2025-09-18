@@ -94,6 +94,7 @@ namespace picongpu
                             , mass1(precisionCast<float_COLL>(picongpu::traits::attribute::getMass(1, par1)))
                         {
                             // --- Calculate total 4-momentum in Lab Frame ---
+                            // In PIC units, non weighted
                             float_COLL const E0_lab = energy<float_COLL>(labMomentum0, mass0);
                             float_COLL const E1_lab = energy<float_COLL>(labMomentum1, mass1);
                             float_COLL const E_tot_lab = E0_lab + E1_lab;
@@ -177,6 +178,16 @@ namespace picongpu
                             float3_COLL const u1_cm = p1_cm / mP1;
                             float3_COLL const u1_lab = u1_cm + (math::dot(V_cm, u1_cm) * factorA + gamma_cm * gamma_p1_cm) * V_cm;
                             labMomentum1 = u1_lab * mP1;
+                            if(debugFusion){
+                                printf("  Product 1: mass: %f, momentum: %f, %f, %f, energy: %f\n",
+                                   mP0,
+                                   labMomentum0[0], labMomentum0[1], labMomentum0[2],
+                                   energy<float_X>(labMomentum0, mP0));
+                                printf("  Product 2: mass: %f, momentum: %f, %f, %f, energy: %f\n",
+                                   mP1,
+                                   labMomentum1[0], labMomentum1[1], labMomentum1[2],
+                                   energy<float_X>(labMomentum1, mP1));
+                            }
                         }
                         DINLINE float3_X P0() const
                         {
@@ -204,6 +215,15 @@ namespace picongpu
                             if((par0[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X})
                                && (par1[momentum_] == float3_X{0.0_X, 0.0_X, 0.0_X}))
                                 return;
+
+                                
+                            // Get a random float value from 0,1
+                            using UniformFloat = pmacc::random::distributions::Uniform<
+                                pmacc::random::distributions::uniform::ExcludeOne<float_COLL>::Reduced>;
+                            auto rng = rngHandle.template applyDistribution<UniformFloat>();
+                            float_COLL rngValue1 = rng(worker);
+
+
                             // calculate boost and relative energy
                             Variables v{par0, par1};
 
@@ -216,7 +236,7 @@ namespace picongpu
 
                             // Convert cross section from millibarns to PIC area units
                             constexpr float_COLL millibarn_to_m2 = 1e-31;  // 1 millibarn = 1e-31 m²
-                            constexpr float_COLL picLength_to_m = sim.unit.length();
+                            constexpr float_COLL picLength_to_m = sim.unit.length(); // [m/UNIT_LENGTH]
                             constexpr float_COLL m2_to_picArea = 1.0 / (picLength_to_m * picLength_to_m);
                             constexpr float_COLL millibarn_to_picArea = millibarn_to_m2 * m2_to_picArea;
 
@@ -228,15 +248,12 @@ namespace picongpu
                             float_X sigma_picArea = crossSection(v.E_r * convToKeV) * millibarn_to_picArea;
                             float_X P = probabilityFactor * sigma_picArea * v.V_rel_mag * v.gamma_cm;
 
-                            // Get a random float value from 0,1
-                            using UniformFloat = pmacc::random::distributions::Uniform<
-                                pmacc::random::distributions::uniform::ExcludeOne<float_COLL>::Reduced>;
-                            auto rng = rngHandle.template applyDistribution<UniformFloat>();
-                            float_COLL rngValue1 = rng(worker);
-                            if constexpr(alwaysFuseQ) P=1.0_COLL; // always fuse if this is set to true
 
                             // print with probability 1e-2
-                            if (debugFusion || (worker.workerIdx() == 0 && rng(worker) < 1e-8)){
+                            if (debugFusion || (rng(worker) < 1e-8)){
+                                // print particle id
+                                printf("Particle 1 ID: %lu, Particle 2 ID: %lu\n", par0[particleId_], par1[particleId_]);
+
                                 printf("Worker %d,millibarn_to_picArea: %e, sigma_milibarns: %e, probabilityFactor: %e, v.V_rel [m/s]: %e, v.gamma_cm: %e, P: %e\n",
                                    worker.workerIdx(), millibarn_to_picArea, sigma_milibarns, probabilityFactor, v.V_rel_mag*picVelocity_to_m_per_s, v.gamma_cm, P);
                                 printf("E_r [keV]: %f, sigma [mb]: %f\n",
@@ -250,6 +267,22 @@ namespace picongpu
                                    weightingR2, v.mass1,
                                    par1[momentum_][0], par1[momentum_][1], par1[momentum_][2],
                                    energy<float_X>(par1[momentum_], v.mass1));
+                            }
+                            if constexpr(alwaysFuseQ) P=1.0_COLL; // always fuse if this is set to true
+
+                            
+                            if (v.E_r <= 0.0_COLL) {
+                                // print Er
+                                if (debugFusion || (worker.workerIdx() == 0 && rng(worker) < 1e-8)){
+                                    printf("Warning: Relative kinetic energy E_r is non-positive: %f\n", v.E_r);
+                                }
+                                if constexpr(debugFusion && alwaysFuseQ){
+                                    mom0 = float3_X{1.0_X, 0.0_X, 0.0_X};
+                                    mom1 = float3_X{-1.0_X, 0.0_X, 0.0_X};
+                                }
+
+                                // No relative kinetic energy, no reaction possible
+                                return;
                             }
 
                             if(rngValue1 < P){

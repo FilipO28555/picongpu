@@ -49,6 +49,7 @@ namespace picongpu::particles::fusion::detail
                     auto particle = parAccess[partIdx];
                     density += particle[weighting_];
                 }
+                //! @todo don't divide by volume
                 densityArray[linearIdx] = density / sim.pic.getCellSize().productOfComponents();
             });
     }

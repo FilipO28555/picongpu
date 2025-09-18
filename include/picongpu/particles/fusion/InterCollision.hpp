@@ -22,7 +22,7 @@
 #include "picongpu/defines.hpp"
 #include "picongpu/fields/FieldTmp.hpp"
 #include "picongpu/particles/fusion/detail/Creation.hpp"
-#include "picongpu/particles/fusion/detail/FusionContext.hpp"
+#include "picongpu/particles/fusion/detail/arrayHelpers.hpp"
 #include "picongpu/particles/fusion/detail/ListEntry.hpp"
 #include "picongpu/particles/fusion/detail/cellDensity.hpp"
 #include "picongpu/particles/fusion/fieldSlots.hpp"
@@ -63,50 +63,6 @@ namespace picongpu::particles::fusion
         HINLINE InterCollision() = default;
 
         
-        template<typename T_worker, typename T_arr>
-        DINLINE void zeroArray(T_worker const& worker, T_arr* arr, uint32_t const& size) const
-        {
-            for (int i = worker.workerIdx();i < size; i += worker.numWorkers())
-            {
-                arr[i] = 0;
-            }
-            worker.sync();
-        }
-
-        template<bool debug = false, typename T_worker, typename T_arr>
-        DINLINE void maxArrayDestroy(T_worker const& worker, T_arr& arr, int const& size) const
-        {
-            uint32_t pow = 1;
-            while(pow < size){
-                for(uint32_t i = worker.workerIdx(); pow*(2*i+1) < size; i += 2*pow*worker.numWorkers())
-                {
-                    arr[2*i*pow] = std::max(arr[2*i*pow],arr[pow*(2*i+1)]);
-                }
-                pow <<= 1; //*2
-                worker.sync();
-                if constexpr (debug){
-                    if(worker.workerIdx() == 0)
-                        printArray(arr);
-                    worker.sync();
-                }
-            }
-            // max is now at arr[0];
-        }
-
-        template<std::size_t... Is, std::size_t N>
-        DINLINE void printArrayImpl(memory::Array<uint32_t, N>& arr, std::index_sequence<Is...>) const
-        {
-            printf("array: ");
-            ((printf("%u, ", arr[Is])), ...);
-            printf("\n");
-        }
-
-        template<std::size_t N>
-        DINLINE void printArray(memory::Array<uint32_t, N>& arr) const
-        {
-            printArrayImpl(arr, std::make_index_sequence<N>{});
-        }
-
 
         /**
          * @brief Main operator to execute the inter-species collision kernel.
@@ -233,7 +189,7 @@ namespace picongpu::particles::fusion
             }
             // now in nppc[i] we have the maximum number of particles in each cell
             worker.sync();
-            maxArrayDestroy<false>(worker, nppc, numCellsPerSuperCell);
+            detail::maxArrayDestroy<false>(worker, nppc, numCellsPerSuperCell);
             // now in nppc[0] we have the maximum number of particles in the supercell
             onlyMaster([&]() {
                 maxNumParticlesInCell = nppc[0];
@@ -494,7 +450,7 @@ namespace picongpu::particles::fusion
             for (int cellIdx = 0; cellIdx < numCellsPerSuperCell ; ++cellIdx)
             {
                 // sync() inside
-                zeroArray(worker, weightingArray, weightingArraySize); 
+                detail::zeroArray(worker, weightingArray, weightingArraySize); 
 
                 uint32_t const size1 = reactant1CellList.numParticles[cellIdx];
                 uint32_t const size2 = reactant2CellList.numParticles[cellIdx];
@@ -547,8 +503,17 @@ namespace picongpu::particles::fusion
                         float3_X product1Momentum{0._X};
                         float3_X product2Momentum{0._X};
 
+                        // WU:
                         // P = n_min * n_a / n_ba * Fmult * minWeighting * dt * (sigma*v_rel*gamma_cm) <- this inside fuse()
                         float_X const probabilityCorrectionFactor = minReactantDensity * correctionFactor[cellIdx] * Fmult * sim.pic.getDt();
+
+                        // Higginson:
+                        // P = minWeighting/V * maxNumParticles * Fmult * sim.pic.getDt() * (sigma*v_rel*gamma_cm) <- this inside fuse()
+                        // float_X const maxWeighting = isWeightingR1Greater ? weightingR1 : weightingR2;
+                        // float_X const maxReactantDensity = isDensity1Greater ? reactant1Density[cellIdx] : reactant2Density[cellIdx];
+                        // float_X constexpr cellVolume = sim.pic.getCellSize().productOfComponents();
+                        // float_X const probabilityCorrectionFactor = maxWeighting * maxNumParticles * Fmult * sim.pic.getDt() / cellVolume;
+
                         // print probabilityCorrectionFactor;
                         if constexpr (debugFusion){
                             printf("Worker %d, cell %d, duplicationFactor: %u, probabilityCorrectionFactor: %f\n",

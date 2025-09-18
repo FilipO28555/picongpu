@@ -52,6 +52,13 @@ namespace picongpu
                 {
                     template<typename T_ParamClass, typename T_ValueFunctor>
                     struct Drift;
+
+                    template<typename T_ParamClass, typename T_ValueFunctor>
+                    struct Drift2DifferentDir;
+
+                    template<typename T_ParamClass, typename T_ValueFunctor>
+                    struct DriftWithFlag;
+
                 } // namespace acc
 
                 /** change particle's momentum based on speed
@@ -66,6 +73,14 @@ namespace picongpu
                     typename T_ParamClass = param::DriftCfg,
                     typename T_ValueFunctor = pmacc::math::operation::Add>
                 using Drift = generic::Free<acc::Drift<T_ParamClass, T_ValueFunctor>>;
+                
+                template<typename T_ParamClass = param::DriftCfg,
+                         typename T_ValueFunctor = pmacc::math::operation::Add>
+                using Drift2DifferentDir = generic::Free<acc::Drift2DifferentDir<T_ParamClass, T_ValueFunctor>>;
+
+                template<typename T_ParamClass = param::DriftCfg,
+                         typename T_ValueFunctor = pmacc::math::operation::Add>
+                using DriftOnce = generic::Free<acc::DriftWithFlag<T_ParamClass, T_ValueFunctor>>;
 
             } // namespace unary
         } // namespace manipulators

@@ -191,6 +191,10 @@ namespace picongpu
      */
     value_identifier(DataSpace<simDim>, totalCellIdx, DataSpace<simDim>());
 
+    //! alias for a flag that is set after assigning momentum using "DriftWithFlag"=="DriftOnce"
+    // alias(driftFlag);
+    // value_identifier(bool, DriftFlag, false); // flag to check if drift was applied
+
     //! alias for particle shape, see also species.param
     alias(shape);
 

@@ -80,8 +80,14 @@ namespace picongpu
                         DataConnector& dc = Environment<>::get().DataConnector();
                         auto idProvider = dc.get<IdProvider>("globalId");
 
-                        DoIntraCollision<T_CollisionFunctor, T_FilterPair, T_ReactantSpecies, T_ProductSpecies1, T_ProductSpecies2, colliderId, pairId>(
-                            deviceHeap,
+                        DoIntraCollision<
+                            T_CollisionFunctor, 
+                            T_FilterPair, 
+                            T_ReactantSpecies, 
+                            T_ProductSpecies1, 
+                            T_ProductSpecies2, 
+                            colliderId, 
+                            pairId>{}(deviceHeap,
                             currentStep,
                             idProvider->getDeviceGenerator());
                     }

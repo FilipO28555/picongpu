@@ -56,11 +56,6 @@ namespace picongpu::particles::fusion
             {
                 /** for not mixing operations::assign up with the nvidia functor assign */
                 namespace partOp = pmacc::particles::operations;
-                /** Set all product particles multimask to 0 - we will set it to 1 at the end of fusion stage */
-                p1r1[multiMask_] = 1u;
-                p1r2[multiMask_] = 1u;
-                p2r1[multiMask_] = 1u;
-                p2r2[multiMask_] = 1u;
 
                 /** each thread initializes a clone of the parent particle but leaving out
                  * some attributes:
@@ -77,6 +72,11 @@ namespace picongpu::particles::fusion
 
                 targetClone4.derive(worker, idGen, r1);
                 targetClone5.derive(worker, idGen, r2);
+                
+                p1r1[multiMask_] = 1u;
+                p1r2[multiMask_] = 1u;
+                p2r1[multiMask_] = 1u;
+                p2r2[multiMask_] = 1u;
 
                 // we are creating two particles, so we need to set the weighting
                 productWeighting = productWeighting/2._X;
