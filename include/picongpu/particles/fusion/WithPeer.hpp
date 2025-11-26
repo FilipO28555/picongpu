@@ -89,8 +89,17 @@ namespace picongpu
                     // implementation in later pull request
                     void operator()(std::shared_ptr<DeviceHeap> const& deviceHeap, uint32_t currentStep)
                     {
-                        // assert false for now
-                        static_assert(sizeof(T_ReactantSpecies) == 0, "Intra-species fusion not implemented yet.");
+                        DataConnector& dc = Environment<>::get().DataConnector();
+                        auto idProvider = dc.get<IdProvider>("globalId");
+
+                        DoIntraCollision<
+                            T_CollisionFunctor,
+                            T_FilterPair,
+                            T_ReactantSpecies,
+                            T_ProductSpecies1,
+                            T_ProductSpecies2,
+                            colliderId,
+                            pairId>{}(deviceHeap, currentStep, idProvider->getDeviceGenerator());
                     }
                 };
             } // namespace detail

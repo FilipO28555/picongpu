@@ -515,14 +515,14 @@ namespace picongpu::particles::fusion
                             product2Momentum,
                             rngHandle);
 
-
                         // If a reaction occurred, create the product particles
                         if(product1Momentum != float3_X{0._X} || product2Momentum != float3_X{0._X})
                         {
                             // because we could change Fmult inside fuser (because the probability might have been >1)
                             float_X productWeighting = minWeighting / Fmult;
 
-                            weightingArray[i] = productWeighting; // no atomic needed because i is unique per thread
+                            // no atomic needed because i is unique per thread
+                            weightingArray[i] = productWeighting;
 
                             uint32_t freeIndex = alpaka::atomicAdd(
                                 worker.getAcc(),
